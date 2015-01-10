@@ -1,6 +1,7 @@
 module samples.multithreaded;
 
-import llvm.all;
+import llvm.d.llvm_c;
+import llvm.d.ir.llvmcontext;
 import std.stdio;
 
 void main(string[] args)

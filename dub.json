@@ -2,13 +2,14 @@
 	"name": "djass",
 	"description": "LLVM based JASS language realization",
 	"homepage": "http://github.com/ncrashed/djass",
-	"copyright": "Copyright © 2013, Gushcha Anton",
+	"copyright": "Copyright © 2013,2015, Gushcha Anton",
 	"license": "Boost",
 	"authors": [
 		"NCrashed - Gushcha Anton"
 	],
 	"dependencies": {
-        "llvm-d": "~master",
+        "llvm-d:d-api": "~master",
+        "llvm-d:c-api": "~master",
         "pegged": "~master"
 	},
 	"targetPath": "bin",
@@ -17,7 +18,6 @@
 		"winlibs/LLVM-3.3.dll",
 		"winlibs/pthreadGC2.dll"
 	],
-
 	"configurations": [
 		{
 			"name": "tests",
