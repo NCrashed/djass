@@ -81,10 +81,10 @@ JassGrammar:
                       / Identifier 
                       / Parens
 
-    PostfixExpression < PrimaryExpression 
-                      / ArrayRef 
+    PostfixExpression < ArrayRef 
                       / FuncCall
                       / FuncRef
+                      / PrimaryExpression
 
     UnaryOperator   < '+' / '-' / "not"                  
     UnaryExpression < PostfixExpression
@@ -115,9 +115,25 @@ JassGrammar:
     Natives      < NativeDecl+
 
     # Temporaly to debug first part
-    UserDefined <~ .*
+    UserDefined < Function*
+    Function < "constant"? "function" FunctionDecl LocalVarList StatementList "endfunction" 
 
-    JassModule < (TypeDefs / GlobalVars / Natives)* UserDefined?
+    LocalVarList < ("local" VarDecl)*
+    VarDecl < Type Identifier ("=" Expression)? / Type "array" Identifier
+    
+    StatementList < (Statement)*
+    Statement < Set / Call / IfThenElse / Loop / ExitWhen / Return / Debug
+    Set < "set" Identifier "=" Expression / "set" Identifier "[" Expression "]" "=" Expression
+    Call < "call" Identifier "(" Args? ")"
+    Args < Expression ("," Expression)*
+    IfThenElse < "if" Expression "then" StatementList ElseClause? "endif"
+    ElseClause < "else" StatementList / "elseif" Expression "then" StatementList ElseClause?
+    Loop < "loop" StatementList "endloop"
+    ExitWhen < "exitwhen" Expression
+    Return < "return" Expression?
+    Debug < "debug" (Set / Call / IfThenElse / Loop)
+
+    JassModule < (TypeDefs / GlobalVars / Natives)* UserDefined
 `;
 
 mixin(grammar(jassGrammar));
@@ -184,6 +200,30 @@ unittest
             PrimaryExpression->Const->IntConst->Decimal
         }
     `);
+    
+    writeln("Testing 1+2+3...");
+    expressionTester.assertSimilar(`1+2+3`,
+    `
+        Expression->LogicalANDExpression->EqualityExpression
+        ->RelationalExpression->AdditiveExpression->
+        {
+            MultiplicativeExpression->UnaryExpression
+            ->PostfixExpression->PrimaryExpression
+            ->Const->IntConst->Decimal
+            
+            AdditiveExpression->
+            {
+            	MultiplicativeExpression->UnaryExpression
+	            ->PostfixExpression->PrimaryExpression
+	            ->Const->IntConst->Decimal
+
+	            AdditiveExpression->MultiplicativeExpression
+	            ->UnaryExpression->PostfixExpression->
+	            PrimaryExpression->Const->IntConst->Decimal
+            }
+        }
+    `);
+    
     writeln("Testing real...");
     expressionTester.assertSimilar(`0.42`,
     `
@@ -466,6 +506,47 @@ unittest
                 Type
                 Identifier
             }
+        }
+    `);
+    
+    writeln("Testing functions...");
+    auto funcTester = new GrammarTester!(JassGrammar, "Function");
+    funcTester.assertSimilar(`
+        function GetRandomDirectionDeg takes nothing returns real
+        	return GetRandomReal(0, 360)
+    	endfunction
+    `,
+    `
+        Function->
+        {
+        	FunctionDecl->
+        	{
+        		Identifier
+        		Type->POD
+        	}
+        	StatementList->
+        	{
+        		Statement->Return->Expression->LogicalANDExpression
+        			->EqualityExpression->RelationalExpression->AdditiveExpression
+        			->MultiplicativeExpression->UnaryExpression->PostfixExpression
+        			->FuncCall->
+    			{
+    				Identifier
+    				ArgumentList ->
+    				{
+    					Expression->LogicalANDExpression->EqualityExpression
+    						->RelationalExpression->AdditiveExpression
+    						->MultiplicativeExpression->UnaryExpression
+    						->PostfixExpression->PrimaryExpression
+    						->Const->IntConst->Octal
+						Expression->LogicalANDExpression->EqualityExpression
+    						->RelationalExpression->AdditiveExpression
+    						->MultiplicativeExpression->UnaryExpression
+    						->PostfixExpression->PrimaryExpression
+    						->Const->IntConst->Decimal
+    				}
+    			}
+        	}
         }
     `);
 }

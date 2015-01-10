@@ -17,13 +17,5 @@
 		"winlibs/libstdc++-6.dll",
 		"winlibs/LLVM-3.3.dll",
 		"winlibs/pthreadGC2.dll"
-	],
-	"configurations": [
-		{
-			"name": "tests",
-			"targetName": "tests",
-			"targetType": "executable",
-			"dflags": ["-unittest", "-debug"]
-		}
 	]
 }
