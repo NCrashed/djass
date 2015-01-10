@@ -35,12 +35,18 @@ enum jassGrammar =
 # Parses JASS language (used to be main scripting language in Warcraft III game)
 # Some extentions: delimeters are expanded, now you can break declarations in multiple lines
 JassGrammar:
-    EOL <- endOfLine+
+
+	JassModule < (TypeDefs / GlobalVars / Natives)* UserDefined
+
     lowerCase  <- [a-z]
     upperCase  <- [A-Z]
     digit      <- [0-9]
 
-    Comment <~ "//" (!endOfLine .)* :EOL
+    Comment <~ BlockComment
+    		/  LineComment
+
+    LineComment <~ :'//' (!endOfLine .)* :endOfLine
+    BlockComment <~ :'/ *' (!'* /' .)* :'* /'
     Spacing <- :(' ' / '\t' / '\r' / '\n' / '\r\n' / Comment)*
 
     Identifier <~ (lowerCase / upperCase / '_') (lowerCase / upperCase / '_' / digit)*
@@ -132,8 +138,6 @@ JassGrammar:
     ExitWhen < "exitwhen" Expression
     Return < "return" Expression?
     Debug < "debug" (Set / Call / IfThenElse / Loop)
-
-    JassModule < (TypeDefs / GlobalVars / Natives)* UserDefined
 `;
 
 mixin(grammar(jassGrammar));
@@ -549,4 +553,17 @@ unittest
         	}
         }
     `);
+}
+unittest
+{
+	import djass.parser;
+	import std.file;
+	
+	writeln("Parsing common.j");
+	auto parseTreeCommon = JassGrammar(readText("tests/common.j"));
+	if(!parseTreeCommon.successful) writeln(parseTreeCommon.failMsg);
+	
+	writeln("Parsing blizzard.j");
+	auto parseTreeBlizzard = JassGrammar(readText("tests/blizzard.j"));
+	if(!parseTreeBlizzard.successful) writeln(parseTreeBlizzard.failMsg);
 }
