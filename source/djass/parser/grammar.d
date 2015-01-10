@@ -1,4 +1,4 @@
-// Copyright 2013 Gushcha Anton
+// Copyright 2013,2015 Gushcha Anton
 /*
 Boost Software License - Version 1.0 - August 17th, 2003
 
@@ -25,7 +25,7 @@ ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
 DEALINGS IN THE SOFTWARE.
 */
 // Written in D programing language
-module djass.parser;
+module djass.parser.grammar;
 
 import pegged.grammar;
 import pegged.tester.grammartester;
@@ -42,14 +42,20 @@ JassGrammar:
     upperCase  <- [A-Z]
     digit      <- [0-9]
 
-    Comment <~ BlockComment
-    		/  LineComment
+    Comment <~ LineComment
+    		/  BlockComment
 
     LineComment <~ :'//' (!endOfLine .)* :endOfLine
     BlockComment <~ :'/ *' (!'* /' .)* :'* /'
     Spacing <- :(' ' / '\t' / '\r' / '\n' / '\r\n' / Comment)*
 
-    Identifier <~ (lowerCase / upperCase / '_') (lowerCase / upperCase / '_' / digit)*
+    Keyword <- "type" / "extends" / "null" / "true" / "false" / "function" / "constant" 
+    		/ "mod" / "and" / "or" / "native" / "returns" / "take" / "globals" / "endglobals"
+    		/ "nothing" / "native" / "endfunction" / "local" / "array" 
+    		/ "set" / "call" / "if" / "then" / "endif" / "elseif" 
+    		/ "loop" / "endloop" / "exitwhen" / "return" / "debug"
+
+    Identifier <~ !Keyword (lowerCase / upperCase / '_') (lowerCase / upperCase / '_' / digit)*
 
     TypeDef  < :"type" Identifier :"extends" Identifier
     TypeDefs < TypeDef+
@@ -107,9 +113,9 @@ JassGrammar:
     POD      <- "integer" / "real" / "boolean" / "string"
     Type     <- POD / "handle" / "code" / Identifier
 
-    PODVarDecl < Type Identifier :"=" Expression
+    PODVarDecl < Type Identifier (:"=" Expression)?
     ArrayDecl  < Type :"array" Identifier
-    GlobalVar  < Constant? (PODVarDecl / ArrayDecl)
+    GlobalVar  < Constant? (ArrayDecl / PODVarDecl)
     GlobalVars < :"globals" (GlobalVar)* :"endglobals"
 
 
@@ -122,7 +128,7 @@ JassGrammar:
 
     # Temporaly to debug first part
     UserDefined < Function*
-    Function < "constant"? "function" FunctionDecl LocalVarList StatementList "endfunction" 
+    Function < Constant? "function" FunctionDecl LocalVarList StatementList "endfunction" 
 
     LocalVarList < ("local" VarDecl)*
     VarDecl < Type Identifier ("=" Expression)? / Type "array" Identifier
@@ -513,6 +519,32 @@ unittest
         }
     `);
     
+//    auto testera = new GrammarTester!(JassGrammar, "JassModule");
+//    testera.assertSimilar(`
+//globals 
+//            real varA = 0.42
+//            constant integer varB = 42
+//            handle array varC
+//        endglobals
+//
+////***************************************************************************
+////*
+////*  Debugging Functions
+////*
+////***************************************************************************
+//
+////===========================================================================
+//function BJDebugMsg takes string msg returns nothing
+//    local integer i = 0
+//    loop
+//        call DisplayTimedTextToPlayer(Player(i),0,0,60,msg)
+//        set i = i + 1
+//        exitwhen i == bj_MAX_PLAYERS
+//    endloop
+//endfunction
+//    `,
+//    `JassModule`);
+    
     writeln("Testing functions...");
     auto funcTester = new GrammarTester!(JassGrammar, "Function");
     funcTester.assertSimilar(`
@@ -556,7 +588,6 @@ unittest
 }
 unittest
 {
-	import djass.parser;
 	import std.file;
 	
 	writeln("Parsing common.j");
@@ -566,4 +597,5 @@ unittest
 	writeln("Parsing blizzard.j");
 	auto parseTreeBlizzard = JassGrammar(readText("tests/blizzard.j"));
 	if(!parseTreeBlizzard.successful) writeln(parseTreeBlizzard.failMsg);
+	writeln(parseTreeBlizzard);
 }
