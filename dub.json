@@ -10,7 +10,7 @@
 	"dependencies": {
         "llvm-d:d-api": "~master",
         "llvm-d:c-api": "~master",
-        "pegged": "~master"
+        "pegged": ">=0.1.0"
 	},
 	"targetPath": "bin",
 	"copyFiles-windows": [
