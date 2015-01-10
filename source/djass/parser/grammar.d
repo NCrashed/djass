@@ -597,5 +597,4 @@ unittest
 	writeln("Parsing blizzard.j");
 	auto parseTreeBlizzard = JassGrammar(readText("tests/blizzard.j"));
 	if(!parseTreeBlizzard.successful) writeln(parseTreeBlizzard.failMsg);
-	writeln(parseTreeBlizzard);
 }
