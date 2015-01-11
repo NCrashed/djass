@@ -43,21 +43,25 @@ JassGrammar:
     lowerCase  <- [a-z]
     upperCase  <- [A-Z]
     digit      <- [0-9]
+    alpha      <- lowerCase / upperCase / '_'
+    alphanum   <- lowerCase / upperCase / '_' / digit
 
     Comment <~ LineComment
     		/  BlockComment
 
-    LineComment <~ :'//' (!endOfLine .)* :endOfLine
-    BlockComment <~ :'/ *' (!'* /' .)* :'* /'
-    Spacing <- :(' ' / '\t' / '\r' / '\n' / '\r\n' / Comment)*
+    LineComment <~ '//' (!endOfLine .)* :endOfLine
+    BlockComment <~ '/ *' (!'* /' .)* '* /'
+    Spacing_ <- (' ' / '\t' / '\r' / '\n' / '\r\n' / Comment)+
+    Spacing <- (' ' / '\t' / '\r' / '\n' / '\r\n' / Comment)*
 
     Keyword <- "type" / "extends" / "null" / "true" / "false" / "function" / "constant" 
-    		/ "mod" / "and" / "or" / "native" / "returns" / "take" / "globals" / "endglobals"
+    		/ "mod" / "and" / "or" / "not" / "native" / "returns" / "take" / "globals" / "endglobals"
     		/ "nothing" / "native" / "endfunction" / "local" / "array" 
     		/ "set" / "call" / "if" / "then" / "endif" / "elseif" 
     		/ "loop" / "endloop" / "exitwhen" / "return" / "debug"
 
-    Identifier <~ !Keyword (lowerCase / upperCase / '_') (lowerCase / upperCase / '_' / digit)*
+    KeywordWord <- Keyword (Spacing_ / endOfInput / !alphanum)
+    Identifier <~ !KeywordWord alpha alphanum*
 
     TypeDef  < "type" Identifier "extends" Identifier
 
@@ -138,7 +142,7 @@ JassGrammar:
     Set < "set" Identifier "=" Expression / "set" Identifier "[" Expression "]" "=" Expression
     Call < "call" FuncCall
     IfThenElse < "if" Expression "then" StatementList ElseClause? "endif"
-    ElseClause < "else" StatementList / "elseif" Expression "then" StatementList ElseClause?
+    ElseClause < "elseif" Expression "then" StatementList ElseClause? / "else" StatementList
     Loop < "loop" StatementList "endloop"
     ExitWhen < "exitwhen" Expression
     Return < "return" Expression?
@@ -177,6 +181,13 @@ unittest
     }
     `);
 
+    writeln("Testing identifiers...");
+    auto identiferTester = new GrammarTester!(JassGrammar, "Identifier");
+    identiferTester.assertSimilar(`modulus`, `Identifier`);
+    identiferTester.assertSimilar(`thenclause`, `Identifier`);
+    //identiferTester.assertDifferent(`then`, `Identifier`);
+    //identiferTester.assertDifferent(`mod`, `Identifier`);
+    
     auto expressionTester = new GrammarTester!(JassGrammar, "Expression");
 
     writeln("Testing 1+2...");
