@@ -33,10 +33,12 @@ import pegged.tester.grammartester;
 enum jassGrammar =
 `
 # Parses JASS language (used to be main scripting language in Warcraft III game)
-# Some extentions: delimeters are expanded, now you can break declarations in multiple lines
+# Some extentions: 
+# - delimeters are expanded, now you can break declarations in multiple lines
+# - block comments are added
 JassGrammar:
 
-	JassModule < (TypeDefs / GlobalVars / Natives)* UserDefined
+	JassModule < (TypeDefs / GlobalVars / Natives)* Function*
 
     lowerCase  <- [a-z]
     upperCase  <- [A-Z]
@@ -57,7 +59,7 @@ JassGrammar:
 
     Identifier <~ !Keyword (lowerCase / upperCase / '_') (lowerCase / upperCase / '_' / digit)*
 
-    TypeDef  < :"type" Identifier :"extends" Identifier
+    TypeDef  < "type" Identifier "extends" Identifier
     TypeDefs < TypeDef+
 
     ArgumentList < Expression (',' Expression)*
@@ -113,31 +115,30 @@ JassGrammar:
     POD      <- "integer" / "real" / "boolean" / "string"
     Type     <- POD / "handle" / "code" / Identifier
 
-    PODVarDecl < Type Identifier (:"=" Expression)?
-    ArrayDecl  < Type :"array" Identifier
+    PODVarDecl < Type Identifier ("=" Expression)?
+    ArrayDecl  < Type "array" Identifier
     GlobalVar  < Constant? (ArrayDecl / PODVarDecl)
-    GlobalVars < :"globals" (GlobalVar)* :"endglobals"
+    GlobalVars < "globals" (GlobalVar)* "endglobals"
 
 
     Param        < Type Identifier
     ParamList    < Param (',' Param)*
-    FunctionDecl < Identifier :"takes" ("nothing" / ParamList) 
-                   :"returns" (Type / "nothing")
-    NativeDecl   < Constant? :"native" FunctionDecl
+    FunctionDecl < Identifier "takes" ("nothing" / ParamList) 
+                   "returns" (Type / "nothing")
+    NativeDecl   < Constant? "native" FunctionDecl
     Natives      < NativeDecl+
 
-    # Temporaly to debug first part
-    UserDefined < Function*
     Function < Constant? "function" FunctionDecl LocalVarList StatementList "endfunction" 
 
     LocalVarList < ("local" VarDecl)*
-    VarDecl < Type Identifier ("=" Expression)? / Type "array" Identifier
+    VarSimple < Type Identifier ("=" Expression)?
+    VarArray < Type "array" Identifier
+    VarDecl < VarArray / VarSimple
     
     StatementList < (Statement)*
     Statement < Set / Call / IfThenElse / Loop / ExitWhen / Return / Debug
     Set < "set" Identifier "=" Expression / "set" Identifier "[" Expression "]" "=" Expression
-    Call < "call" Identifier "(" Args? ")"
-    Args < Expression ("," Expression)*
+    Call < "call" FuncCall
     IfThenElse < "if" Expression "then" StatementList ElseClause? "endif"
     ElseClause < "else" StatementList / "elseif" Expression "then" StatementList ElseClause?
     Loop < "loop" StatementList "endloop"
@@ -147,21 +148,6 @@ JassGrammar:
 `;
 
 mixin(grammar(jassGrammar));
-/*mixin(grammar(`
-JassGrammar:
-    TypeDefs < Term
-    Term     < Factor (Add / Sub)*
-    Add      < "+" Factor
-    Sub      < "-" Factor
-    Factor   < Primary (Mul / Div)*
-    Mul      < "*" Primary
-    Div      < "/" Primary
-    Primary  < Parens / Neg / Number / Variable
-    Parens   < :"(" Term :")"
-    Neg      < "-" Primary
-    Number   < ~([0-9]+)
-    Variable <- identifier
-`));*/
 
 version(unittest)
 {
@@ -518,32 +504,6 @@ unittest
             }
         }
     `);
-    
-//    auto testera = new GrammarTester!(JassGrammar, "JassModule");
-//    testera.assertSimilar(`
-//globals 
-//            real varA = 0.42
-//            constant integer varB = 42
-//            handle array varC
-//        endglobals
-//
-////***************************************************************************
-////*
-////*  Debugging Functions
-////*
-////***************************************************************************
-//
-////===========================================================================
-//function BJDebugMsg takes string msg returns nothing
-//    local integer i = 0
-//    loop
-//        call DisplayTimedTextToPlayer(Player(i),0,0,60,msg)
-//        set i = i + 1
-//        exitwhen i == bj_MAX_PLAYERS
-//    endloop
-//endfunction
-//    `,
-//    `JassModule`);
     
     writeln("Testing functions...");
     auto funcTester = new GrammarTester!(JassGrammar, "Function");
