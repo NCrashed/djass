@@ -38,7 +38,7 @@ enum jassGrammar =
 # - block comments are added
 JassGrammar:
 
-	JassModule < (TypeDefs / GlobalVars / Natives)* Function*
+	JassModule < (TypeDef+ / GlobalVars / NativeDecl+)* Function*
 
     lowerCase  <- [a-z]
     upperCase  <- [A-Z]
@@ -60,7 +60,6 @@ JassGrammar:
     Identifier <~ !Keyword (lowerCase / upperCase / '_') (lowerCase / upperCase / '_' / digit)*
 
     TypeDef  < "type" Identifier "extends" Identifier
-    TypeDefs < TypeDef+
 
     ArgumentList < Expression (',' Expression)*
 
@@ -126,7 +125,6 @@ JassGrammar:
     FunctionDecl < Identifier "takes" ("nothing" / ParamList) 
                    "returns" (Type / "nothing")
     NativeDecl   < Constant? "native" FunctionDecl
-    Natives      < NativeDecl+
 
     Function < Constant? "function" FunctionDecl LocalVarList StatementList "endfunction" 
 
@@ -156,7 +154,7 @@ version(unittest)
 unittest
 {
     writeln("Testing jass grammar...");
-    auto typeTester = new GrammarTester!(JassGrammar, "TypeDefs");
+    auto typeTester = new GrammarTester!(JassGrammar, "JassModule");
 
     writeln("Testing type declarations...");
     typeTester.assertSimilar(`
@@ -164,7 +162,7 @@ unittest
         type destructable extends widget
     `,
     `
-    TypeDefs->
+    JassModule->
     {
         TypeDef->
         {
