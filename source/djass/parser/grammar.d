@@ -27,8 +27,13 @@ DEALINGS IN THE SOFTWARE.
 // Written in D programing language
 module djass.parser.grammar;
 
+import std.algorithm;
+import std.container.dlist;
+import std.range;
+
 import pegged.grammar;
 import pegged.tester.grammartester;
+import djass.parser.tree;
 
 enum jassGrammar =
 `
@@ -38,7 +43,7 @@ enum jassGrammar =
 # - block comments are added
 JassGrammar:
 
-	JassModule < (TypeDef+ / GlobalVars / NativeDecl+)* Function*
+    JassModule < (TypeDef+ / GlobalVars / NativeDecl+)* Function*
 
     lowerCase  <- [a-z]
     upperCase  <- [A-Z]
@@ -47,7 +52,7 @@ JassGrammar:
     alphanum   <- lowerCase / upperCase / '_' / digit
 
     Comment <~ LineComment
-    		/  BlockComment
+            /  BlockComment
 
     LineComment <~ '//' (!endOfLine .)* :endOfLine
     BlockComment <~ '/ *' (!'* /' .)* '* /'
@@ -55,10 +60,10 @@ JassGrammar:
     Spacing <- (' ' / '\t' / '\r' / '\n' / '\r\n' / Comment)*
 
     Keyword <- "type" / "extends" / "null" / "true" / "false" / "function" / "constant" 
-    		/ "mod" / "and" / "or" / "not" / "native" / "returns" / "take" / "globals" / "endglobals"
-    		/ "nothing" / "native" / "endfunction" / "local" / "array" 
-    		/ "set" / "call" / "if" / "then" / "endif" / "elseif" 
-    		/ "loop" / "endloop" / "exitwhen" / "return" / "debug"
+            / "mod" / "and" / "or" / "not" / "native" / "returns" / "take" / "globals" / "endglobals"
+            / "nothing" / "native" / "endfunction" / "local" / "array" 
+            / "set" / "call" / "if" / "then" / "endif" / "elseif" 
+            / "loop" / "endloop" / "exitwhen" / "return" / "debug"
 
     KeywordWord <- Keyword (Spacing_ / endOfInput / !alphanum)
     Identifier <~ !KeywordWord alpha alphanum*
@@ -93,9 +98,10 @@ JassGrammar:
     FuncRef    < "function" Identifier
     ArrayRef   < Identifier "[" ArgumentList  "]"
     FuncCall   < Identifier "(" ArgumentList? ")"
+    VarRef     < Identifier
 
     PrimaryExpression < Const
-                      / Identifier 
+                      / VarRef 
                       / Parens
 
     PostfixExpression < ArrayRef 
@@ -103,14 +109,25 @@ JassGrammar:
                       / FuncRef
                       / PrimaryExpression
 
-    UnaryOperator   < '+' / '-' / "not"                  
+    Not <- "not"
     UnaryExpression < PostfixExpression
-                    / UnaryOperator Expression
+                    / (Plus / Minus / Not) Expression
 
-    MultiplicativeExpression < UnaryExpression (('*'/ '/' / "mod") MultiplicativeExpression)?
-    AdditiveExpression       < MultiplicativeExpression ([-+] AdditiveExpression)?
-    RelationalExpression     < AdditiveExpression (("<=" / ">=" / "<" / ">") RelationalExpression)?
-    EqualityExpression       < RelationalExpression (("==" / "!=") EqualityExpression)?
+    Mult <- "*"
+    Div <- "/"
+    Mod <- "mod"
+    MultiplicativeExpression < UnaryExpression ((Mult / Div / Mod) MultiplicativeExpression)?
+    Plus <- "+"
+    Minus <- "-"
+    AdditiveExpression       < MultiplicativeExpression ((Plus / Minus) AdditiveExpression)?
+    GreaterEqual <- ">="
+    LessEqual <- "<="
+    Greater <- ">"
+    Less <- "<"
+    RelationalExpression     < AdditiveExpression ((GreaterEqual / LessEqual / Greater / Less) RelationalExpression)?
+    Equal <- "=="
+    NotEqual <- "!="
+    EqualityExpression       < RelationalExpression ((Equal / NotEqual) EqualityExpression)?
     LogicalANDExpression     < EqualityExpression ("and" LogicalANDExpression)?
     Expression               < LogicalANDExpression ("or" Expression)?
 
@@ -151,6 +168,419 @@ JassGrammar:
 
 mixin(grammar(jassGrammar));
 
+/**
+*    Generating AST from string input, doesn't perform any semantic analysis.
+*/
+public ISyntaxTree parseJass(string input)
+{
+    auto tree = JassGrammar(input);
+    if(!tree.successful) throw new Exception(tree.failMsg);
+    return toAST(tree);
+}
+
+private ISyntaxTree toAST(ParseTree p, int line = __LINE__)
+{
+    switch(p.name)
+    {
+        case "JassGrammar":
+            return toAST(p.children[0]);
+        case "JassGrammar.JassModule":
+            DList!TypeDef typeDefs;
+            DList!GlobalVar globalVars;
+            DList!Native natives;
+            DList!Function functions;
+            
+            foreach(pc; p.children)
+            {
+                switch (pc.name) {
+                    case "JassGrammar.TypeDef":
+                        typeDefs.insert(cast(TypeDef)toAST(pc));
+                        break;
+                    case "JassGrammar.GlobalVars":
+                        DList!GlobalVar vars;
+                        foreach(pcc; pc.children)
+                        {
+                            if(pcc.name == "JassGrammar.GlobalVar")
+                                vars.insert(cast(GlobalVar)toAST(pcc));
+                        }
+                        globalVars ~= vars;
+                        break;
+                    case "JassGrammar.NativeDecl":
+                        natives.insert(cast(Native)toAST(pc));
+                        break;
+                    case "JassGrammar.Function":
+                        functions.insert(cast(Function)toAST(pc));
+                        break;
+                    default:
+                        throw new Exception("Unknown node in JassGrammar.JassModule: " ~ pc.name);
+                }
+            }
+            
+            return new JassModule(
+                typeDefs[].inputRangeObject, 
+                globalVars[].inputRangeObject, 
+                natives[].inputRangeObject, 
+                functions[].inputRangeObject);
+        case "JassGrammar.TypeDef":
+            return new TypeDef(p.children[0].matches[0], p.children[1].matches[0]);
+        case "JassGrammar.NativeDecl":
+            bool isConstant = p.children.any!q{a.name == "JassGrammar.Constant"};
+            FunctionDecl funcDecl 
+                = cast(FunctionDecl)toAST(p.children.find!q{a.name == "JassGrammar.FunctionDecl"}[0]);
+            return new Native(isConstant, funcDecl);
+        case "JassGrammar.FunctionDecl":
+            string name = p.children[0].matches[0];
+            string retType = p.children[$-1].matches[0];
+            DList!(FunctionDecl.Param) params;
+            foreach(pc; p.children[1 .. $-1])
+            {
+                if(pc.name == "JassGrammar.Param")
+                {
+                    auto param = FunctionDecl.Param(
+                      pc.children[0].matches[0],
+                      pc.children[1].matches[1]
+                    );
+                    params.insert(param);
+                }
+            }
+            return new FunctionDecl(name, params[].array, retType); 
+        case "JassGrammar.GlobalVar":
+            bool isConstant = p.children[0].name == "JassGrammar.Constant";
+            ParseTree varBody = p.children[isConstant ? 1 : 0];
+            bool isArray = varBody.name == "JassGrammar.ArrayDecl";
+
+            string type = varBody.children[0].matches[0];
+            string name = varBody.children[1].matches[0];
+            Expression initExpr = null;
+            if(varBody.children.length > 2) {
+                initExpr = cast(Expression)toAST(varBody.children[2]);
+            }
+            return new GlobalVar(isConstant, isArray, type, name, initExpr);
+        case "JassGrammar.Expression":
+            auto left = cast(Expression)toAST(p.children[0]);
+            if(p.children.length > 1) {
+                auto right = cast(Expression)toAST(p.children[1]);
+                return new BinaryExpression(BinaryExpression.Type.Or, left, right);
+            } else {
+                return left;
+            }
+        case "JassGrammar.LogicalANDExpression":
+            auto left = cast(Expression)toAST(p.children[0]);
+            if(p.children.length > 1) {
+                auto right = cast(Expression)toAST(p.children[1]);
+                return new BinaryExpression(BinaryExpression.Type.And, left, right);
+            } else {
+                return left;
+            }
+        case "JassGrammar.EqualityExpression":
+            auto left = cast(Expression)toAST(p.children[0]);
+            if(p.children.length > 1) {
+                BinaryExpression.Type op;
+                switch(p.children[1].name) {
+                    case "JassGrammar.Equal":
+                        op = BinaryExpression.Type.Equal;
+                        break;
+                    case "JassGrammar.NotEqual":
+                        op = BinaryExpression.Type.NotEqual;
+                        break;
+                    default:
+                        throw new Exception("Unknown equality operation!");
+                }
+                auto right = cast(Expression)toAST(p.children[2]);
+                return new BinaryExpression(op, left, right);
+            } else {
+                return left;
+            }
+        case "JassGrammar.RelationalExpression":
+            auto left = cast(Expression)toAST(p.children[0]);
+            if(p.children.length > 1) {
+                BinaryExpression.Type op;
+                switch(p.children[1].name) {
+                    case "JassGrammar.Less":
+                        op = BinaryExpression.Type.Less;
+                        break;
+                    case "JassGrammar.Greater":
+                        op = BinaryExpression.Type.Greater;
+                        break;
+                    case "JassGrammar.LessEqual":
+                        op = BinaryExpression.Type.LessEqual;
+                        break;
+                    case "JassGrammar.GreaterEqual":
+                        op = BinaryExpression.Type.GreaterEqual;
+                        break;
+                    default:
+                        throw new Exception("Unknown relational operation!");
+                }
+                auto right = cast(Expression)toAST(p.children[2]);
+                return new BinaryExpression(op, left, right);
+            } else {
+                return left;
+            }
+        case "JassGrammar.AdditiveExpression":
+            auto left = cast(Expression)toAST(p.children[0]);
+            if(p.children.length > 1) {
+                BinaryExpression.Type op;
+                switch(p.children[1].name) {
+                    case "JassGrammar.Plus":
+                        op = BinaryExpression.Type.Summ;
+                        break;
+                    case "JassGrammar.Minus":
+                        op = BinaryExpression.Type.Substract;
+                        break;
+                    default:
+                        throw new Exception("Unknown additive operation!");
+                }
+                auto right = cast(Expression)toAST(p.children[2]);
+                return new BinaryExpression(op, left, right);
+            } else {
+                return left;
+            }
+        case "JassGrammar.MultiplicativeExpression":
+            auto left = cast(Expression)toAST(p.children[0]);
+            if(p.children.length > 1) {
+                BinaryExpression.Type op;
+                switch(p.children[1].name) {
+                    case "JassGrammar.Mult":
+                        op = BinaryExpression.Type.Multiply;
+                        break;
+                    case "JassGrammar.Div":
+                        op = BinaryExpression.Type.Division;
+                        break;
+                    case "JassGrammar.Mod":
+                        op = BinaryExpression.Type.Reminder;
+                        break;
+                    default:
+                        throw new Exception("Unknown multiplicative operation!");
+                }
+                auto right = cast(Expression)toAST(p.children[2]);
+                return new BinaryExpression(op, left, right);
+            } else {
+                return left;
+            }
+        case "JassGrammar.UnaryExpression":
+            if(p.children.length > 1) {
+                auto value = cast(Expression)toAST(p.children[1]);
+                UnaryExpression.Type op;
+                switch(p.children[0].name) {
+                    case "JassGrammar.Plus":
+                        op = UnaryExpression.Type.Plus;
+                        break;
+                    case "JassGrammar.Minus":
+                        op = UnaryExpression.Type.Negation;
+                        break;
+                    case "JassGrammar.Not":
+                        op = UnaryExpression.Type.Not;
+                        break;
+                    default:
+                        throw new Exception("Unknown unary operation!");
+                }
+                return new UnaryExpression(op, value);
+            } else {
+                return toAST(p.children[0]);
+            }
+        case "JassGrammar.PostfixExpression":
+            return toAST(p.children[0]);
+        case "JassGrammar.ArrayRef": 
+            string name = p.children[0].matches[0];
+            DList!Expression arguments;
+            foreach(pc; p.children[1].children)
+            {
+                if(pc.name == "JassGrammar.Expression")
+                    arguments.insert(cast(Expression)toAST(pc));
+            }
+            return new ArrayRef(name, arguments[].array);
+        case "JassGrammar.FuncCall":
+            string name = p.children[0].matches[0];
+            if(p.children.length > 1)
+            {
+                DList!Expression arguments;
+                foreach(pc; p.children[1].children)
+                {
+                    if(pc.name == "JassGrammar.Expression")
+                        arguments.insert(cast(Expression)toAST(pc));
+                }
+                return new ArrayRef(name, arguments[].array);
+            } else
+            {
+                return new ArrayRef(name, []);
+            }
+        case "JassGrammar.FuncRef":
+            string name = p.children[0].matches[0];
+            return new FuncRef(name);
+        case "JassGrammar.PrimaryExpression":   
+            return toAST(p.children[0]);
+        case "JassGrammar.Const":
+            return toAST(p.children[0]);
+        case "JassGrammar.VarRef":
+            string name = p.children[0].matches[0];
+            return new VariableRef(name);
+        case "JassGrammar.Parens":
+            return toAST(p.children[0]);
+        case "JassGrammar.RealConst":
+            return new RealLiteral(p.matches[0].to!float);
+        case "JassGrammar.IntConst":
+            bool positive = true;
+            if(p.children.length > 1)
+            {
+               positive = p.children[0].matches[0] == "+";
+            }
+            ParseTree value = p.children[$-1]; 
+            switch(value.name)
+            {
+                case "JassGrammar.Decimal":
+                    return new IntegerLiteral((positive ? 1 : -1)* value.matches[0].to!int);
+                case "JassGrammar.Hex":
+                    string raw = value.matches[0];
+                    if(raw[0] == '$') raw = raw[1..$];
+                    else raw = raw[3..$-1];
+                    return new IntegerLiteral((positive ? 1 : -1)* raw.to!int(16));
+                case "JassGrammar.Octal":
+                    string raw = value.matches[0][1..$];
+                    if(raw == "") return new IntegerLiteral(0);
+                    else return new IntegerLiteral((positive ? 1 : -1)*raw.to!int(8));
+                case "JassGrammar.RawCode":
+                    string raw = value.matches[0][1..$-1];
+                    return new IntegerLiteral(
+                        raw[0].to!int*256^3 + raw[1].to!int*256^2 + raw[2].to!int*256 + raw[3].to!int
+                    );
+                default:
+                    throw new Exception("Unknown int const representation!");
+            }
+        case "JassGrammar.BoolConst":
+            return new BoolLiteral(p.matches[0].to!bool);
+        case "JassGrammar.NullLiteral":
+            return new NullLiteral();
+        case "JassGrammar.StringConst":
+            return new StringLiteral(p.matches[0]); ///TODO: Escaping problem
+        case "JassGrammar.Function":
+            bool isConstant = p.children[0].name == "JassGrammar.Constant";
+            auto proto = cast(FunctionDecl)toAST(p.children[isConstant ? 1 : 0]);
+            
+            auto localsTree = p.children.find!q{a.name == "JassGrammar.LocalVarList"};
+            auto statementsTree = p.children.find!q{a.name == "JassGrammar.StatementList"};
+            
+            DList!LocalVar locals;
+            if(!localsTree.empty) foreach(local; localsTree[0].children)
+            {
+                if(local.name == "JassGrammar.VarDecl")
+                    locals.insert(cast(LocalVar)toAST(local));
+            }
+            
+            DList!Statement statements;
+            if(!statementsTree.empty) foreach(stmt; statementsTree[0].children)
+            {
+                if(stmt.name == "JassGrammar.Statement")
+                    statements.insert(cast(Statement)toAST(stmt));
+            }
+            
+            return new Function(isConstant, proto
+                , locals[].inputRangeObject
+                , statements[].inputRangeObject);
+        case "JassGrammar.VarDecl":
+            return toAST(p.children[0]);
+        case "JassGrammar.VarSimple":
+            string type = p.children[0].matches[0];
+            string name = p.children[1].matches[0];
+            Expression initializator = null;
+            if(p.children.length > 2) {
+                initializator = cast(Expression)toAST(p.children[2]);
+            }
+            return new LocalVar(false, type, name, initializator);
+        case "JassGrammar.VarArray":
+            string type = p.children[0].matches[0];
+            string name = p.children[1].matches[0];
+            return new LocalVar(true, type, name, null);
+        case "JassGrammar.Statement":
+            return toASTStatement(false, p.children[0]);
+        default:
+            std.stdio.writeln(line);
+            std.stdio.writeln(p);
+            throw new Exception("Unknown node " ~ p.name);
+    }
+}
+
+private Statement toASTStatement(bool isDebug, ParseTree p)
+{
+    switch(p.name)
+    {
+        case "JassGrammar.Statement":
+            return toASTStatement(isDebug, p.children[0]);
+        case "JassGrammar.Set":
+            string name = p.children[0].matches[0];
+            if(p.children.length > 2) {
+                Expression index = cast(Expression)toAST(p.children[1]);
+                Expression value = cast(Expression)toAST(p.children[2]);
+                return new SetStatement(true, name, value, index, isDebug);
+            } else {
+                Expression value = cast(Expression)toAST(p.children[1]);
+                return new SetStatement(false, name, value, null, isDebug);
+            }
+        case "JassGrammar.Call":
+            return new CallStatement(cast(FuncCall)toAST(p.children[0]), isDebug);
+        case "JassGrammar.IfThenElse":
+            Expression condition = cast(Expression)toAST(p.children[0]);
+            
+            auto thenClauseTree = p.children.find!q{a.name == "JassGrammar.StatementList"};
+            DList!Statement thenClause;
+            if(!thenClauseTree.empty) foreach(stmt; thenClauseTree[0].children)
+            {
+                if(stmt.name == "JassGrammar.Statement")
+                    thenClause.insert(toASTStatement(isDebug, stmt));
+            }
+            
+            DList!(IfThenElse.ElseClause) elseClauses;
+            void toASTElse(ParseTree pelse) {
+                DList!Statement elseStatements;
+                auto condTree = pelse.children.find!q{a.name == "JassGrammar.Expression"};
+                auto stmtsTree = pelse.children.find!q{a.name == "JassGrammar.StatementList"};
+                auto elseTree = pelse.children.find!q{a.name == "JassGrammar.ElseClause"};
+                Expression condition = condTree.empty ? null : cast(Expression)toAST(condTree[0]);
+                
+                if(!stmtsTree.empty) foreach(stmt; stmtsTree[0].children)
+                {
+                    if(stmt.name == "JassGrammar.Statement")
+                        elseStatements.insert(toASTStatement(isDebug, stmt));
+                }
+                
+                elseClauses.insert(
+                        IfThenElse.ElseClause(condition, elseStatements[].inputRangeObject));
+                
+                if(!elseTree.empty)
+                {
+                    toASTElse(elseTree[0]);
+                }
+            }
+            
+            auto elseClauseTree = p.children.find!q{a.name == "JassGrammar.ElseClause"};
+            if(!elseClauseTree.empty) {
+                toASTElse(elseClauseTree[0]);
+            }
+            return new IfThenElse(condition, thenClause[].inputRangeObject
+                , elseClauses[].inputRangeObject, isDebug);
+        case "JassGrammar.Loop":
+            DList!Statement stmts;
+            foreach(stmt; p.children[0].children)
+            {
+                if(stmt.name == "JassGrammar.Statement")
+                    stmts.insert(toASTStatement(isDebug, stmt));
+            }
+            return new LoopStatement(stmts[].inputRangeObject, isDebug);
+        case "JassGrammar.ExitWhen":
+            Expression cond = cast(Expression)toAST(p.children[0]);
+            return new ExitWhenStatement(cond);
+        case "JassGrammar.Return":
+            if(p.children.length > 0) {
+                Expression cond = cast(Expression)toAST(p.children[0]);
+                return new ReturnStatement(cond);
+            } else {
+                return new ReturnStatement(null);
+            }
+        case "JassGrammar.Debug":
+            return toASTStatement(true, p.children[1]);
+        default:
+            throw new Exception("Unknown statement "~p.name);
+    }    
+}
 version(unittest)
 {
     import std.stdio;
@@ -199,7 +629,7 @@ unittest
             MultiplicativeExpression->UnaryExpression
             ->PostfixExpression->PrimaryExpression
             ->Const->IntConst->Decimal
-            
+            Plus
             AdditiveExpression->MultiplicativeExpression
             ->UnaryExpression->PostfixExpression->
             PrimaryExpression->Const->IntConst->Decimal
@@ -216,15 +646,19 @@ unittest
             ->PostfixExpression->PrimaryExpression
             ->Const->IntConst->Decimal
             
+            Plus
+
             AdditiveExpression->
             {
-            	MultiplicativeExpression->UnaryExpression
-	            ->PostfixExpression->PrimaryExpression
-	            ->Const->IntConst->Decimal
+                MultiplicativeExpression->UnaryExpression
+                ->PostfixExpression->PrimaryExpression
+                ->Const->IntConst->Decimal
 
-	            AdditiveExpression->MultiplicativeExpression
-	            ->UnaryExpression->PostfixExpression->
-	            PrimaryExpression->Const->IntConst->Decimal
+                Plus
+
+                AdditiveExpression->MultiplicativeExpression
+                ->UnaryExpression->PostfixExpression->
+                PrimaryExpression->Const->IntConst->Decimal
             }
         }
     `);
@@ -406,12 +840,16 @@ unittest
             ->PostfixExpression->PrimaryExpression
             ->Const->BoolConst
 
+            Equal
+
             EqualityExpression->
             {
                 RelationalExpression->AdditiveExpression
                 ->MultiplicativeExpression->UnaryExpression
                 ->PostfixExpression->PrimaryExpression
                 ->Const->BoolConst
+
+                NotEqual
 
                 EqualityExpression
                 ->RelationalExpression->AdditiveExpression
@@ -431,12 +869,16 @@ unittest
             ->PostfixExpression->PrimaryExpression
             ->Const->IntConst->Octal
 
+            Greater
+
             RelationalExpression->
             {
                 AdditiveExpression
                 ->MultiplicativeExpression->UnaryExpression
                 ->PostfixExpression->PrimaryExpression
                 ->Const->IntConst->Decimal
+
+                Less
 
                 RelationalExpression->
                 {
@@ -445,12 +887,16 @@ unittest
                     ->PostfixExpression->PrimaryExpression
                     ->Const->BoolConst
 
+                    LessEqual
+
                     RelationalExpression->
                     {
                         AdditiveExpression
                         ->MultiplicativeExpression->UnaryExpression
                         ->PostfixExpression->PrimaryExpression
                         ->Const->BoolConst
+
+                        GreaterEqual
 
                         RelationalExpression->AdditiveExpression
                         ->MultiplicativeExpression->UnaryExpression
@@ -518,52 +964,50 @@ unittest
     auto funcTester = new GrammarTester!(JassGrammar, "Function");
     funcTester.assertSimilar(`
         function GetRandomDirectionDeg takes nothing returns real
-        	return GetRandomReal(0, 360)
-    	endfunction
+            return GetRandomReal(0, 360)
+        endfunction
     `,
     `
         Function->
         {
-        	FunctionDecl->
-        	{
-        		Identifier
-        		Type->POD
-        	}
-        	StatementList->
-        	{
-        		Statement->Return->Expression->LogicalANDExpression
-        			->EqualityExpression->RelationalExpression->AdditiveExpression
-        			->MultiplicativeExpression->UnaryExpression->PostfixExpression
-        			->FuncCall->
-    			{
-    				Identifier
-    				ArgumentList ->
-    				{
-    					Expression->LogicalANDExpression->EqualityExpression
-    						->RelationalExpression->AdditiveExpression
-    						->MultiplicativeExpression->UnaryExpression
-    						->PostfixExpression->PrimaryExpression
-    						->Const->IntConst->Octal
-						Expression->LogicalANDExpression->EqualityExpression
-    						->RelationalExpression->AdditiveExpression
-    						->MultiplicativeExpression->UnaryExpression
-    						->PostfixExpression->PrimaryExpression
-    						->Const->IntConst->Decimal
-    				}
-    			}
-        	}
+            FunctionDecl->
+            {
+                Identifier
+                Type->POD
+            }
+            StatementList->
+            {
+                Statement->Return->Expression->LogicalANDExpression
+                    ->EqualityExpression->RelationalExpression->AdditiveExpression
+                    ->MultiplicativeExpression->UnaryExpression->PostfixExpression
+                    ->FuncCall->
+                {
+                    Identifier
+                    ArgumentList ->
+                    {
+                        Expression->LogicalANDExpression->EqualityExpression
+                            ->RelationalExpression->AdditiveExpression
+                            ->MultiplicativeExpression->UnaryExpression
+                            ->PostfixExpression->PrimaryExpression
+                            ->Const->IntConst->Octal
+                        Expression->LogicalANDExpression->EqualityExpression
+                            ->RelationalExpression->AdditiveExpression
+                            ->MultiplicativeExpression->UnaryExpression
+                            ->PostfixExpression->PrimaryExpression
+                            ->Const->IntConst->Decimal
+                    }
+                }
+            }
         }
     `);
 }
 unittest
 {
-	import std.file;
-	
-	writeln("Parsing common.j");
-	auto parseTreeCommon = JassGrammar(readText("tests/common.j"));
-	if(!parseTreeCommon.successful) writeln(parseTreeCommon.failMsg);
-	
-	writeln("Parsing blizzard.j");
-	auto parseTreeBlizzard = JassGrammar(readText("tests/blizzard.j"));
-	if(!parseTreeBlizzard.successful) writeln(parseTreeBlizzard.failMsg);
+    import std.file;
+    
+    writeln("Parsing common.j");
+    parseJass(readText("tests/common.j"));
+    
+    writeln("Parsing blizzard.j");
+    parseJass(readText("tests/blizzard.j"));
 }
