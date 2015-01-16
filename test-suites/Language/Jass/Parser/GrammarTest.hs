@@ -54,27 +54,30 @@ commonParsing = testGroup "common.j and blizzard.j parsing"
     testCase "blizzard.j" $ testJassFile "tests/blizzard.j"
   ]
 
+nosrc :: SrcPos
+nosrc = SrcPos "" 0 0 0
+
 syntaxTests :: TestTree
 syntaxTests = testGroup "Syntax tests"
-    [ testCase "empty module" $ parseTestModule "" (JassModule [] [] [] []),
+    [ testCase "empty module" $ parseTestModule "" (JassModule nosrc [] [] [] []),
       testCase "Type declarations" $
         parseTestModule
             ("type widget extends handle\n" ++
             "type destructable extends widget")
-            (JassModule [
-                TypeDef "widget" JHandle,
-                TypeDef "destructable" (JUserDefined "widget")
+            (JassModule nosrc [
+                TypeDef nosrc "widget" JHandle,
+                TypeDef nosrc "destructable" (JUserDefined "widget")
             ] [] [] []),
       testCase "global variable" $
         parseTestGlobalVar "force bj_FORCE_ALL_PLAYERS = null" 
-          (GlobalVar False False (JUserDefined "force") "bj_FORCE_ALL_PLAYERS" (Just NullLiteral)),
+          (GlobalVar nosrc False False (JUserDefined "force") "bj_FORCE_ALL_PLAYERS" (Just $ NullLiteral nosrc)),
       testCase "globals" $
         parseTestTwoGlobalVars
           ("constant integer   bj_ELEVATOR_WALL_TYPE_WEST       = 4\n" ++
            "force              bj_FORCE_ALL_PLAYERS        = null\n")
           (
-            GlobalVar True False JInteger "bj_ELEVATOR_WALL_TYPE_WEST" (Just $ IntegerLiteral 4),
-            GlobalVar False False (JUserDefined "force") "bj_FORCE_ALL_PLAYERS" (Just NullLiteral)
+            GlobalVar nosrc True False JInteger "bj_ELEVATOR_WALL_TYPE_WEST" (Just $ IntegerLiteral nosrc 4),
+            GlobalVar nosrc False False (JUserDefined "force") "bj_FORCE_ALL_PLAYERS" (Just $ NullLiteral nosrc)
           ),
       testCase "globals" $
         parseTestModule
@@ -88,15 +91,15 @@ syntaxTests = testGroup "Syntax tests"
            "constant integer   bj_ELEVATOR_WALL_TYPE_WEST       = 4\n" ++
            "force              bj_FORCE_ALL_PLAYERS        = null\n" ++
            "endglobals")
-          (JassModule [] [
-            GlobalVar False False JReal "global1" Nothing,
-            GlobalVar False False JInteger "global2" (Just $ IntegerLiteral 0),
-            GlobalVar True False JReal "global3" (Just $ RealLiteral 3.14),
-            GlobalVar False True JHandle "global4" Nothing,
-            GlobalVar True True (JUserDefined "widget") "global5" Nothing,
-            GlobalVar True False (JUserDefined "playercolor") "global6" (Just $ FunctionCall "ConvertPlayerColor" [IntegerLiteral 0]),
-            GlobalVar True False JInteger "bj_ELEVATOR_WALL_TYPE_WEST" (Just $ IntegerLiteral 4),
-            GlobalVar False False (JUserDefined "force") "bj_FORCE_ALL_PLAYERS" (Just NullLiteral)
+          (JassModule nosrc [] [
+            GlobalVar nosrc False False JReal "global1" Nothing,
+            GlobalVar nosrc False False JInteger "global2" (Just $ IntegerLiteral nosrc 0),
+            GlobalVar nosrc True False JReal "global3" (Just $ RealLiteral nosrc 3.14),
+            GlobalVar nosrc False True JHandle "global4" Nothing,
+            GlobalVar nosrc True True (JUserDefined "widget") "global5" Nothing,
+            GlobalVar nosrc True False (JUserDefined "playercolor") "global6" (Just $ FunctionCall nosrc "ConvertPlayerColor" [IntegerLiteral nosrc 0]),
+            GlobalVar nosrc True False JInteger "bj_ELEVATOR_WALL_TYPE_WEST" (Just $ IntegerLiteral nosrc 4),
+            GlobalVar nosrc False False (JUserDefined "force") "bj_FORCE_ALL_PLAYERS" (Just $ NullLiteral nosrc)
           ] [] []),
       testCase "natives" $
         parseTestModule
@@ -104,62 +107,62 @@ syntaxTests = testGroup "Syntax tests"
            "native function2 takes nothing returns widget\n" ++
            "native function3 takes integer par1, code par2 returns handle\n" ++
            "constant native function4 takes nothing returns nothing")
-          (JassModule [] [] [
-              NativeDecl False (FunctionDecl "function1" [] Nothing),
-              NativeDecl False (FunctionDecl "function2" [] (Just $ JUserDefined "widget")),
-              NativeDecl False (FunctionDecl "function3" [(JInteger, "par1"), (JCode, "par2")] (Just JHandle)),
-              NativeDecl True (FunctionDecl "function4" [] Nothing)
+          (JassModule nosrc [] [] [
+              NativeDecl nosrc False (FunctionDecl nosrc "function1" [] Nothing),
+              NativeDecl nosrc False (FunctionDecl nosrc "function2" [] (Just $ JUserDefined "widget")),
+              NativeDecl nosrc False (FunctionDecl nosrc "function3" [(JInteger, "par1"), (JCode, "par2")] (Just JHandle)),
+              NativeDecl nosrc True (FunctionDecl nosrc "function4" [] Nothing)
             ] []),
       testCase "simple function" $
         parseTestModule
             ("function simple takes nothing returns nothing\n" ++
              "endfunction")
-            (JassModule [] [] [] [
-                Function False (FunctionDecl "simple" [] Nothing) [] []
+            (JassModule nosrc [] [] [] [
+                Function nosrc False (FunctionDecl nosrc "simple" [] Nothing) [] []
             ]),
       testCase "constant function" $
         parseTestModule
             ("constant function simple takes nothing returns nothing\n" ++
              "endfunction")
-            (JassModule [] [] [] [
-                Function True (FunctionDecl "simple" [] Nothing) [] []
+            (JassModule nosrc [] [] [] [
+                Function nosrc True (FunctionDecl nosrc "simple" [] Nothing) [] []
             ]),
       testCase "function with return type" $
         parseTestModule
             ("function simple takes nothing returns widget\n" ++
              "endfunction")
-            (JassModule [] [] [] [
-                Function False (FunctionDecl "simple" [] (Just (JUserDefined "widget"))) [] []
+            (JassModule nosrc [] [] [] [
+                Function nosrc False (FunctionDecl nosrc "simple" [] (Just (JUserDefined "widget"))) [] []
             ]),
       testCase "function with parameters" $
         parseTestModule
             ("function simple takes integer par1, real par2, handle par3 returns nothing\n" ++
              "endfunction")
-            (JassModule [] [] [] [
-                Function False (FunctionDecl "simple" [(JInteger, "par1"), (JReal, "par2"), (JHandle, "par3")] Nothing) [] []
+            (JassModule nosrc [] [] [] [
+                Function nosrc False (FunctionDecl nosrc "simple" [(JInteger, "par1"), (JReal, "par2"), (JHandle, "par3")] Nothing) [] []
             ]),
       testCase "function with parameters" $
         parseTestModule
             ("function simple takes widget par1, location par2, handle par3 returns nothing\n" ++
              "endfunction")
-            (JassModule [] [] [] [
-                Function False (FunctionDecl "simple" [(JUserDefined "widget", "par1"), (JUserDefined "location", "par2"), (JHandle, "par3")] Nothing) [] []
+            (JassModule nosrc [] [] [] [
+                Function nosrc False (FunctionDecl nosrc "simple" [(JUserDefined "widget", "par1"), (JUserDefined "location", "par2"), (JHandle, "par3")] Nothing) [] []
             ]),
       testCase "local variable" $
         parseTestLocalVar "local integer var1" 
-          (LocalVar False JInteger "var1" Nothing),
+          (LocalVar nosrc False JInteger "var1" Nothing),
       testCase "local variable" $
         parseTestLocalVar "local playercolor var1 = ConvertPlayerColor(0)" 
-          (LocalVar False (JUserDefined "playercolor") "var1" (Just $ FunctionCall "ConvertPlayerColor" [IntegerLiteral 0])),
+          (LocalVar nosrc False (JUserDefined "playercolor") "var1" (Just $ FunctionCall nosrc "ConvertPlayerColor" [IntegerLiteral nosrc 0])),
       testCase "local variable" $
         parseTestLocalVar "local widget var2 = null" 
-          (LocalVar False (JUserDefined "widget") "var2" (Just NullLiteral)),
+          (LocalVar nosrc False (JUserDefined "widget") "var2" (Just $ NullLiteral nosrc)),
       testCase "local variable" $
         parseTestLocalVar "local real bj_PI = 3.14159" 
-          (LocalVar False JReal "bj_PI" (Just $ RealLiteral 3.14159)),
+          (LocalVar nosrc False JReal "bj_PI" (Just $ RealLiteral nosrc 3.14159)),
       testCase "local variable" $
         parseTestLocalVar "local real bj_RADTODEG = 180.0/bj_PI" 
-          (LocalVar False JReal "bj_RADTODEG" (Just $ BinaryExpression Divide (RealLiteral 180.0) (VariableReference "bj_PI"))),
+          (LocalVar nosrc False JReal "bj_RADTODEG" (Just $ BinaryExpression nosrc Divide (RealLiteral nosrc 180.0) (VariableReference nosrc "bj_PI"))),
       testCase "local variables" $
         parseTestFunction
             ("function simple takes nothing returns nothing\n" ++
@@ -169,98 +172,98 @@ syntaxTests = testGroup "Syntax tests"
              "local widget var4 = null\n" ++ 
              "local handle array var5\n" ++
              "endfunction")
-            (Function False (FunctionDecl "simple" [] Nothing) [
-                  LocalVar False JInteger "var1" Nothing,
-                  LocalVar False JReal "var2" Nothing,
-                  LocalVar False JInteger "var3" (Just $ IntegerLiteral 0),
-                  LocalVar False (JUserDefined "widget") "var4" (Just NullLiteral),
-                  LocalVar True JHandle "var5" Nothing
+            (Function nosrc False (FunctionDecl nosrc "simple" [] Nothing) [
+                  LocalVar nosrc False JInteger "var1" Nothing,
+                  LocalVar nosrc False JReal "var2" Nothing,
+                  LocalVar nosrc False JInteger "var3" (Just $ IntegerLiteral nosrc 0),
+                  LocalVar nosrc False (JUserDefined "widget") "var4" (Just $ NullLiteral nosrc),
+                  LocalVar nosrc True JHandle "var5" Nothing
                 ] []),
       testExpression "1+2"
-            (BinaryExpression Summ (IntegerLiteral 1) (IntegerLiteral 2)),
+            (BinaryExpression nosrc Summ (IntegerLiteral nosrc 1) (IntegerLiteral nosrc 2)),
       testExpression "1+2+3"
-            (BinaryExpression Summ (IntegerLiteral 1) (BinaryExpression Summ (IntegerLiteral 2) (IntegerLiteral 3))),
+            (BinaryExpression nosrc Summ (IntegerLiteral nosrc 1) (BinaryExpression nosrc Summ (IntegerLiteral nosrc 2) (IntegerLiteral nosrc 3))),
       testExpression "1*2*3"
-            (BinaryExpression Multiply (IntegerLiteral 1) (BinaryExpression Multiply (IntegerLiteral 2) (IntegerLiteral 3))),
+            (BinaryExpression nosrc Multiply (IntegerLiteral nosrc 1) (BinaryExpression nosrc Multiply (IntegerLiteral nosrc 2) (IntegerLiteral nosrc 3))),
       testExpression "1+2*3"
-            (BinaryExpression Summ (IntegerLiteral 1) (BinaryExpression Multiply (IntegerLiteral 2) (IntegerLiteral 3))),
+            (BinaryExpression nosrc Summ (IntegerLiteral nosrc 1) (BinaryExpression nosrc Multiply (IntegerLiteral nosrc 2) (IntegerLiteral nosrc 3))),
       testExpression "1*(2+2)"
-            (BinaryExpression Multiply (IntegerLiteral 1) (BinaryExpression Summ (IntegerLiteral 2) (IntegerLiteral 2))),
+            (BinaryExpression nosrc Multiply (IntegerLiteral nosrc 1) (BinaryExpression nosrc Summ (IntegerLiteral nosrc 2) (IntegerLiteral nosrc 2))),
       testExpression "1==2"
-            (BinaryExpression Equal (IntegerLiteral 1) (IntegerLiteral 2)),
+            (BinaryExpression nosrc Equal (IntegerLiteral nosrc 1) (IntegerLiteral nosrc 2)),
       testExpression "1 mod 2"
-            (BinaryExpression Reminder (IntegerLiteral 1) (IntegerLiteral 2)),
+            (BinaryExpression nosrc Reminder (IntegerLiteral nosrc 1) (IntegerLiteral nosrc 2)),
       testExpression "1 > 2 == true"
-            (BinaryExpression Equal (BinaryExpression Greater (IntegerLiteral 1) (IntegerLiteral 2)) (BoolLiteral True)),
+            (BinaryExpression nosrc Equal (BinaryExpression nosrc Greater (IntegerLiteral nosrc 1) (IntegerLiteral nosrc 2)) (BoolLiteral nosrc True)),
       testExpression "not true == false"
-            (BinaryExpression Equal (UnaryExpression Not (BoolLiteral True)) (BoolLiteral False)),
-      testExpression "func()" (FunctionCall "func" []),
-      testExpression "func(1,2)" (FunctionCall "func" [IntegerLiteral 1, IntegerLiteral 2]),
-      testExpression "function func" (FunctionReference "func"),
-      testExpression "arr[10]" (ArrayReference "arr" (IntegerLiteral 10)),
-      testExpression "arr [10]" (ArrayReference "arr" (IntegerLiteral 10)),
-      testExpression "variable" (VariableReference "variable"),
-      testExpression "0xFF" (IntegerLiteral 255),
-      testExpression "0x0F" (IntegerLiteral 15),
-      testExpression "077" (IntegerLiteral 63),
-      testExpression "0" (IntegerLiteral 0),
-      testExpression "0.1" (RealLiteral 0.1),
-      testExpression "-0.1" (RealLiteral (-0.1)),
-      testExpression "+0.1" (RealLiteral 0.1),
-      testExpression ".1" (RealLiteral 0.1),
-      testExpression "-.1" (RealLiteral (-0.1)),
-      testExpression "+.1" (RealLiteral 0.1),
-      testExpression "1." (RealLiteral 1.0),
-      testExpression "-1." (RealLiteral (-1.0)),
-      testExpression "+1." (RealLiteral 1.0),
-      testExpression "0.1E5" (RealLiteral 0.1e5),
-      testExpression "0.1e5" (RealLiteral 0.1e5),
-      testExpression "0.1e-5" (RealLiteral 0.1e-5),
-      testExpression "0.1e+5" (RealLiteral 0.1e5),
-      testExpression "+10.04e-10" (RealLiteral 10.04e-10),
-      testExpression "-10.04e-10" (RealLiteral (-10.04e-10)),
-      testExpression "'A000'" (IntegerLiteral (65*256^(3::Int) + 48*256^(2::Int) + 48*256 + 48)),
-      testExpression "true" (BoolLiteral True),
-      testExpression "false" (BoolLiteral False),
-      testExpression "\"abs\"" (StringLiteral "abs"),
-      testExpression "\"abs\\nabs\"" (StringLiteral "abs\nabs"),
-      testExpression "1 - 2" (BinaryExpression Substract (IntegerLiteral 1) (IntegerLiteral 2)),
+            (BinaryExpression nosrc Equal (UnaryExpression nosrc Not (BoolLiteral nosrc True)) (BoolLiteral nosrc False)),
+      testExpression "func()" (FunctionCall nosrc "func" []),
+      testExpression "func(1,2)" (FunctionCall nosrc "func" [IntegerLiteral nosrc 1, IntegerLiteral nosrc 2]),
+      testExpression "function func" (FunctionReference nosrc "func"),
+      testExpression "arr[10]" (ArrayReference nosrc "arr" (IntegerLiteral nosrc 10)),
+      testExpression "arr [10]" (ArrayReference nosrc "arr" (IntegerLiteral nosrc 10)),
+      testExpression "variable" (VariableReference nosrc "variable"),
+      testExpression "0xFF" (IntegerLiteral nosrc 255),
+      testExpression "0x0F" (IntegerLiteral nosrc 15),
+      testExpression "077" (IntegerLiteral nosrc 63),
+      testExpression "0" (IntegerLiteral nosrc 0),
+      testExpression "0.1" (RealLiteral nosrc 0.1),
+      testExpression "-0.1" (RealLiteral nosrc (-0.1)),
+      testExpression "+0.1" (RealLiteral nosrc 0.1),
+      testExpression ".1" (RealLiteral nosrc 0.1),
+      testExpression "-.1" (RealLiteral nosrc (-0.1)),
+      testExpression "+.1" (RealLiteral nosrc 0.1),
+      testExpression "1." (RealLiteral nosrc 1.0),
+      testExpression "-1." (RealLiteral nosrc (-1.0)),
+      testExpression "+1." (RealLiteral nosrc 1.0),
+      testExpression "0.1E5" (RealLiteral nosrc 0.1e5),
+      testExpression "0.1e5" (RealLiteral nosrc 0.1e5),
+      testExpression "0.1e-5" (RealLiteral nosrc 0.1e-5),
+      testExpression "0.1e+5" (RealLiteral nosrc 0.1e5),
+      testExpression "+10.04e-10" (RealLiteral nosrc 10.04e-10),
+      testExpression "-10.04e-10" (RealLiteral nosrc (-10.04e-10)),
+      testExpression "'A000'" (IntegerLiteral nosrc (65*256^(3::Int) + 48*256^(2::Int) + 48*256 + 48)),
+      testExpression "true" (BoolLiteral nosrc True),
+      testExpression "false" (BoolLiteral nosrc False),
+      testExpression "\"abs\"" (StringLiteral nosrc "abs"),
+      testExpression "\"abs\\nabs\"" (StringLiteral nosrc "abs\nabs"),
+      testExpression "1 - 2" (BinaryExpression nosrc Substract (IntegerLiteral nosrc 1) (IntegerLiteral nosrc 2)),
       testExpression "GetLocationY(locB) - GetLocationY(locA)"
-        (BinaryExpression Substract 
-          (FunctionCall "GetLocationY" [VariableReference "locB"]) 
-          (FunctionCall "GetLocationY" [VariableReference "locA"])),
+        (BinaryExpression nosrc Substract 
+          (FunctionCall nosrc "GetLocationY" [VariableReference nosrc "locB"]) 
+          (FunctionCall nosrc "GetLocationY" [VariableReference nosrc "locA"])),
       testExpression "bj_RADTODEG * Atan2(GetLocationY(locB) - GetLocationY(locA), GetLocationX(locB) - GetLocationX(locA))" 
-        (BinaryExpression Multiply (VariableReference "bj_RADTODEG")
-            (FunctionCall "Atan2" [
-              BinaryExpression Substract (FunctionCall "GetLocationY" [VariableReference "locB"]) (FunctionCall "GetLocationY" [VariableReference "locA"]),
-              BinaryExpression Substract (FunctionCall "GetLocationX" [VariableReference "locB"]) (FunctionCall "GetLocationX" [VariableReference "locA"])
+        (BinaryExpression nosrc Multiply (VariableReference nosrc "bj_RADTODEG")
+            (FunctionCall nosrc "Atan2" [
+              BinaryExpression nosrc Substract (FunctionCall nosrc "GetLocationY" [VariableReference nosrc "locB"]) (FunctionCall nosrc "GetLocationY" [VariableReference nosrc "locA"]),
+              BinaryExpression nosrc Substract (FunctionCall nosrc "GetLocationX" [VariableReference nosrc "locB"]) (FunctionCall nosrc "GetLocationX" [VariableReference nosrc "locA"])
               ])),
-      testStatement "set var = 0" (SetStatement False "var" (IntegerLiteral 0)),
-      testStatement "set var[0] = 0" (SetArrayStatement False "var" (IntegerLiteral 0) (IntegerLiteral 0)),
-      testStatement "call func()" (CallStatement False "func" []),
-      testStatement "call func(var)" (CallStatement False "func" [VariableReference "var"]),
-      testStatement "exitwhen true" (ExitWhenStatement (BoolLiteral True)),
-      testStatement "return" (ReturnStatement Nothing),
-      testStatement "return 42.0" (ReturnStatement (Just $ RealLiteral 42.0)),
-      testStatement "debug set var = 0" (SetStatement True "var" (IntegerLiteral 0)),
-      testStatement "loop endloop" (LoopStatement False []),
-      testStatement "loop return endloop" (LoopStatement False [ReturnStatement Nothing]),
-      testStatement "loop exitwhen true endloop" (LoopStatement False [ExitWhenStatement (BoolLiteral True)]),
-      testStatement "if true then endif" (IfThenElseStatement False (BoolLiteral True) [] []),
+      testStatement "set var = 0" (SetStatement nosrc False "var" (IntegerLiteral nosrc 0)),
+      testStatement "set var[0] = 0" (SetArrayStatement nosrc False "var" (IntegerLiteral nosrc 0) (IntegerLiteral nosrc 0)),
+      testStatement "call func()" (CallStatement nosrc False "func" []),
+      testStatement "call func(var)" (CallStatement nosrc False "func" [VariableReference nosrc "var"]),
+      testStatement "exitwhen true" (ExitWhenStatement nosrc (BoolLiteral nosrc True)),
+      testStatement "return" (ReturnStatement nosrc Nothing),
+      testStatement "return 42.0" (ReturnStatement nosrc (Just $ RealLiteral nosrc 42.0)),
+      testStatement "debug set var = 0" (SetStatement nosrc True "var" (IntegerLiteral nosrc 0)),
+      testStatement "loop endloop" (LoopStatement nosrc False []),
+      testStatement "loop return endloop" (LoopStatement nosrc False [ReturnStatement nosrc Nothing]),
+      testStatement "loop exitwhen true endloop" (LoopStatement nosrc False [ExitWhenStatement nosrc (BoolLiteral nosrc True)]),
+      testStatement "if true then endif" (IfThenElseStatement nosrc False (BoolLiteral nosrc True) [] []),
       testStatement "if true then return else return endif" 
-        (IfThenElseStatement False (BoolLiteral True) [ReturnStatement Nothing] [(Nothing,[ReturnStatement Nothing])]),
+        (IfThenElseStatement nosrc False (BoolLiteral nosrc True) [ReturnStatement nosrc Nothing] [(Nothing,[ReturnStatement nosrc Nothing])]),
       testStatement "if true then return elseif false then return else return endif" 
-        (IfThenElseStatement False (BoolLiteral True) [ReturnStatement Nothing] [(Just $ BoolLiteral False, [ReturnStatement Nothing]), (Nothing, [ReturnStatement Nothing])]),
-      testStatement "debug loop set var = 0 endloop" (LoopStatement True [SetStatement True "var" (IntegerLiteral 0)]),
+        (IfThenElseStatement nosrc False (BoolLiteral nosrc True) [ReturnStatement nosrc Nothing] [(Just $ BoolLiteral nosrc False, [ReturnStatement nosrc Nothing]), (Nothing, [ReturnStatement nosrc Nothing])]),
+      testStatement "debug loop set var = 0 endloop" (LoopStatement nosrc True [SetStatement nosrc True "var" (IntegerLiteral nosrc 0)]),
       testCase "function" $ parseTestFunction 
         ("function AngleBetweenPoints takes location locA, location locB returns real\n" ++
          "return bj_RADTODEG * Atan2(GetLocationY(locB) - GetLocationY(locA), GetLocationX(locB) - GetLocationX(locA))\n" ++
          "endfunction")
-        (Function False (FunctionDecl "AngleBetweenPoints" [(JUserDefined "location", "locA"), (JUserDefined "location", "locB")] (Just JReal)) [] [
-          ReturnStatement $ Just $ BinaryExpression Multiply (VariableReference "bj_RADTODEG")
-            (FunctionCall "Atan2" [
-              BinaryExpression Substract (FunctionCall "GetLocationY" [VariableReference "locB"]) (FunctionCall "GetLocationY" [VariableReference "locA"]),
-              BinaryExpression Substract (FunctionCall "GetLocationX" [VariableReference "locB"]) (FunctionCall "GetLocationX" [VariableReference "locA"])
+        (Function nosrc False (FunctionDecl nosrc "AngleBetweenPoints" [(JUserDefined "location", "locA"), (JUserDefined "location", "locB")] (Just JReal)) [] [
+          ReturnStatement nosrc $ Just $ BinaryExpression nosrc Multiply (VariableReference nosrc "bj_RADTODEG")
+            (FunctionCall nosrc "Atan2" [
+              BinaryExpression nosrc Substract (FunctionCall nosrc "GetLocationY" [VariableReference nosrc "locB"]) (FunctionCall nosrc "GetLocationY" [VariableReference nosrc "locA"]),
+              BinaryExpression nosrc Substract (FunctionCall nosrc "GetLocationX" [VariableReference nosrc "locB"]) (FunctionCall nosrc "GetLocationX" [VariableReference nosrc "locA"])
               ])
           ])
     ]

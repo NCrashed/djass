@@ -28,7 +28,7 @@ import Language.Jass.Parser.AST as AST
 data Trio a b c = TrioFirst a | TrioSecond b | TrioThird c
  
 [peggy|
-    jassModule :: JassModule = (typeDef+ {TrioFirst $1}/ globalVars {TrioSecond $1}/ nativeDecl+ {TrioThird $1})* function* {parseJassModule $1 $2}
+    jassModule :: JassModule = getPos (typeDef+ {TrioFirst $1}/ globalVars {TrioSecond $1}/ nativeDecl+ {TrioThird $1})* function* {parseJassModule $1 $2 $3}
 
     lowerCase :: Char = [a-z]
     upperCase :: Char = [A-Z]
@@ -52,12 +52,12 @@ data Trio a b c = TrioFirst a | TrioSecond b | TrioThird c
     identifier :: String = !keyword alpha alphanum* {[$1] ++ $2}
     
     jassType :: JassType = "integer" {JInteger} / "real" {JReal} / "boolean" {JBoolean} / "string" {JString} / "handle" {JHandle} / "code" {JCode} / identifier {JUserDefined $1}
-    typeDef :: TypeDef = "type" identifier "extends" jassType {TypeDef $1 $2}
+    typeDef :: TypeDef = getPos "type" identifier "extends" jassType {TypeDef $1 $2 $3}
    
     escapeSequence :: Char = backslash (quote / doublequote / backslash 
       / 'a' {'\a'} / 'b' {'\b'} / 'f' {'\f'} / 'n' {'\n'} / 'r' {'\r'} / 't' {'\t'} / 'v' {'\v'}) { $2 }
     dqchar :: Char = escapeSequence / !doublequote .
-    stringLiteral :: Expression = doublequote (dqchar)* doublequote {StringLiteral $2}
+    stringLiteral :: Expression = getPos doublequote (dqchar)* doublequote {StringLiteral $1 $3}
     
     integer :: String = digit+
     sign :: Char = [-] / [+]
@@ -66,19 +66,19 @@ data Trio a b c = TrioFirst a | TrioSecond b | TrioThird c
     hex :: Int = '$'[0-9a-fA-F]+ {parseHex $1} / '0'[xX][0-9a-fA-F]+ {parseHex $2}
     rawcode :: Int = quote . . . . quote {parseRawCode [$2,$3,$4,$5]}
     
-    intLiteral :: Expression = sign? (decimal / hex / octal / rawcode) {IntegerLiteral (parseIntLiteral $1 $2)}
-    realLiteral :: Expression = sign? integer? '.' integer? (('e' / 'E') sign? integer {($2, $3)})? {RealLiteral (parseRealLiteral $1 $2 $3 $4)}
-    boolLiteral :: Expression = "true" {BoolLiteral True} / "false" {BoolLiteral False}
-    nullLiteral :: Expression = "null" {NullLiteral}
+    intLiteral :: Expression = getPos sign? (decimal / hex / octal / rawcode) {IntegerLiteral $1 (parseIntLiteral $2 $3)}
+    realLiteral :: Expression = getPos sign? integer? '.' integer? (('e' / 'E') sign? integer {($2, $3)})? {RealLiteral $1 (parseRealLiteral $2 $3 $4 $5)}
+    boolLiteral :: Expression = getPos "true" {BoolLiteral $1 True} / getPos "false" {BoolLiteral $1 False}
+    nullLiteral :: Expression = getPos "null" {NullLiteral $1}
     literal :: Expression = realLiteral / intLiteral / boolLiteral / nullLiteral / stringLiteral
     
     agrumentsList :: [Expression] = expression ("," expression)* {[$1] ++ $2}
     
     parens :: Expression = "(" expression ")"
-    funcRef :: Expression = "function" identifier {FunctionReference $1}
-    arrayRef :: Expression = identifier "[" expression "]" {ArrayReference $1 $2}
-    funcCall :: Expression = identifier "(" agrumentsList? ")" {FunctionCall $1 (fromMaybe [] $2)}
-    varRef :: Expression = identifier {VariableReference $1}
+    funcRef :: Expression = getPos "function" identifier {FunctionReference $1 $2}
+    arrayRef :: Expression = getPos identifier "[" expression "]" {ArrayReference $1 $2 $3}
+    funcCall :: Expression = getPos identifier "(" agrumentsList? ")" {FunctionCall $1 $2 (fromMaybe [] $3)}
+    varRef :: Expression = getPos identifier {VariableReference $1 $2}
     
     primaryExpression :: Expression = literal / varRef / parens
     postfixExpression :: Expression = arrayRef / funcCall / funcRef / primaryExpression
@@ -86,7 +86,7 @@ data Trio a b c = TrioFirst a | TrioSecond b | TrioThird c
     notOp :: UnaryOperator = "not" {AST.Not}
     plus :: UnaryOperator = "+" {Plus}
     negation :: UnaryOperator = "-" {Negation}
-    unaryExpression :: Expression = postfixExpression / (plus / negation / notOp) unaryExpression {UnaryExpression $1 $2}
+    unaryExpression :: Expression = postfixExpression / getPos (plus / negation / notOp) unaryExpression {UnaryExpression $1 $2 $3}
     
     summ :: BinaryOperator = "+" {Summ}
     subs :: BinaryOperator = "-" {Substract}
@@ -102,43 +102,43 @@ data Trio a b c = TrioFirst a | TrioSecond b | TrioThird c
     andOp :: BinaryOperator = "and" {AST.And}
     orOp :: BinaryOperator = "or" {AST.Or}
     
-    multiplicativeExpression :: Expression = unaryExpression ((mult / divOp / modOp) multiplicativeExpression {($1, $2)})? {parseBinaryExpression $1 $2}
-    additiveExpression :: Expression = multiplicativeExpression ((summ / subs) additiveExpression {($1, $2)})? {parseBinaryExpression $1 $2}
-    relationalExpression :: Expression = additiveExpression ((greaterEqual / lessEqual / greater / less) relationalExpression {($1, $2)})? {parseBinaryExpression $1 $2}
-    equalityExpression :: Expression = relationalExpression ((equal / notEqual) equalityExpression {($1, $2)})? {parseBinaryExpression $1 $2}
-    andExpression :: Expression = equalityExpression (andOp andExpression {($1, $2)})? {parseBinaryExpression $1 $2}
-    orExpression :: Expression = andExpression (orOp orExpression {($1, $2)})? {parseBinaryExpression $1 $2}
+    multiplicativeExpression :: Expression = getPos unaryExpression ((mult / divOp / modOp) multiplicativeExpression {($1, $2)})? {parseBinaryExpression $1 $2 $3}
+    additiveExpression :: Expression = getPos multiplicativeExpression ((summ / subs) additiveExpression {($1, $2)})? {parseBinaryExpression $1 $2 $3}
+    relationalExpression :: Expression = getPos additiveExpression ((greaterEqual / lessEqual / greater / less) relationalExpression {($1, $2)})? {parseBinaryExpression $1 $2 $3}
+    equalityExpression :: Expression = getPos relationalExpression ((equal / notEqual) equalityExpression {($1, $2)})? {parseBinaryExpression $1 $2 $3}
+    andExpression :: Expression = getPos equalityExpression (andOp andExpression {($1, $2)})? {parseBinaryExpression $1 $2 $3}
+    orExpression :: Expression = getPos andExpression (orOp orExpression {($1, $2)})? {parseBinaryExpression $1 $2 $3}
     expression :: Expression = orExpression
     
     constant :: () = "constant" {()}
     -- Additional space* is a workaround around bug in peggy
-    podVarDecl :: GlobalVar = constant? space* jassType space* identifier ("=" expression)? {GlobalVar (isJust $1) False $3 $5 $6}
-    arrayVarDecl :: GlobalVar = constant? space* jassType "array" identifier {GlobalVar (isJust $1) True $3 $4 Nothing}
+    podVarDecl :: GlobalVar = getPos constant? space* jassType space* identifier ("=" expression)? {GlobalVar $1 (isJust $2) False $4 $6 $7}
+    arrayVarDecl :: GlobalVar = getPos constant? space* jassType "array" identifier {GlobalVar $1 (isJust $2) True $4 $5 Nothing}
     globalVar :: GlobalVar = podVarDecl / arrayVarDecl
     globalVars :: [GlobalVar] = "globals" globalVar* "endglobals"
     
     -- Additional space* is a workaround around bug in peggy
     param :: (JassType, Name) = jassType space* identifier {($1, $3)}
     paramList :: [(JassType, Name)] = param ("," param)* {[$1] ++ $2}
-    functionDecl :: FunctionDecl = identifier "takes" ("nothing" {[]} / paramList) "returns" (jassType {Just $1} / "nothing" {Nothing}) {FunctionDecl $1 $2 $3}
-    nativeDecl :: NativeDecl = constant? "native" functionDecl {NativeDecl (isJust $1) $2}
-    function :: Function = constant? "function" functionDecl localVarList statementList "endfunction" {Function (isJust $1) $2 $3 $4}
+    functionDecl :: FunctionDecl = getPos identifier "takes" ("nothing" {[]} / paramList) "returns" (jassType {Just $1} / "nothing" {Nothing}) {FunctionDecl $1 $2 $3 $4}
+    nativeDecl :: NativeDecl = getPos constant? "native" functionDecl {NativeDecl $1 (isJust $2) $3}
+    function :: Function = getPos constant? "function" functionDecl localVarList statementList "endfunction" {Function $1 (isJust $2) $3 $4 $5}
     
     localVarList :: [LocalVar] = localVar*
     -- Additional space* is a workaround around bug in peggy
-    podLocalVar :: LocalVar = space* jassType space* identifier ("=" expression)? {LocalVar False $2 $4 $5}
-    arrayLocalVar :: LocalVar =  space* jassType "array" identifier {LocalVar True $2 $3 Nothing}
+    podLocalVar :: LocalVar = space* getPos jassType space* identifier ("=" expression)? {LocalVar $2 False $3 $5 $6}
+    arrayLocalVar :: LocalVar =  space* getPos jassType "array" identifier {LocalVar $2 True $3 $4 Nothing}
     localVar :: LocalVar = "local" (podLocalVar / arrayLocalVar)
     
     statementList :: [Statement] = statement*
     statement :: Statement = setStatement / callStatement / ifThenElseStatement / loopStatement / exitWhenStatement / returnStatement / debugStatement
-    setStatement :: Statement = "set" identifier "=" expression {SetStatement False $1 $2} / "set" identifier "[" expression "]" "=" expression {SetArrayStatement False $1 $2 $3}
-    ifThenElseStatement :: Statement = "if" expression "then" statementList elseClause? "endif" {IfThenElseStatement False $1 $2 (fromMaybe [] $3)}
+    setStatement :: Statement = getPos "set" identifier "=" expression {SetStatement $1 False $2 $3} / getPos "set" identifier "[" expression "]" "=" expression {SetArrayStatement $1 False $2 $3 $4}
+    ifThenElseStatement :: Statement = getPos "if" expression "then" statementList elseClause? "endif" {IfThenElseStatement $1 False $2 $3 (fromMaybe [] $4)}
     elseClause :: [(Maybe Expression, [Statement])] = "elseif" expression "then" statementList elseClause? {[(Just $1, $2)] ++ fromMaybe [] $3} / "else" statementList {[(Nothing, $1)]}
-    callStatement :: Statement = "call" identifier "(" agrumentsList? ")" {CallStatement False $1 (fromMaybe [] $2)}
-    loopStatement :: Statement = "loop" statementList "endloop" {LoopStatement False $1}
-    exitWhenStatement :: Statement = "exitwhen" expression {ExitWhenStatement $1}
-    returnStatement :: Statement = "return" expression? {ReturnStatement $1}
+    callStatement :: Statement = getPos "call" identifier "(" agrumentsList? ")" {CallStatement $1 False $2 (fromMaybe [] $3)}
+    loopStatement :: Statement = getPos "loop" statementList "endloop" {LoopStatement $1 False $2}
+    exitWhenStatement :: Statement = getPos "exitwhen" expression {ExitWhenStatement $1 $2}
+    returnStatement :: Statement = getPos "return" expression? {ReturnStatement $1 $2}
     debugStatement :: Statement = "debug" (setStatement / callStatement / ifThenElseStatement / loopStatement) {setDebugStatement True $1}
 
     -- DEBUG
@@ -197,16 +197,17 @@ parseRealLiteral csign intPart decPart expPart = read $ convSign csign ++ fromMa
         expPartStr (Just (esign, emantis)) = "e" ++ convSign esign ++ emantis
         expPartStr _ = ""
         
-parseBinaryExpression :: Expression -> Maybe (BinaryOperator, Expression) -> Expression
-parseBinaryExpression left Nothing = left
-parseBinaryExpression left (Just (op, right)) = BinaryExpression op left right
+parseBinaryExpression :: SrcPos -> Expression -> Maybe (BinaryOperator, Expression) -> Expression
+parseBinaryExpression _ left Nothing = left
+parseBinaryExpression pos left (Just (op, right)) = BinaryExpression pos op left right
 
-parseJassModule :: [Trio [TypeDef] [GlobalVar] [NativeDecl]] -> [Function] -> JassModule
-parseJassModule trios functions = let (tdefs, gvars, natives) = foldl accTrios ([], [], []) trios in JassModule tdefs gvars natives functions
-    where 
-        accTrios (tdefs, gvars, natives) (TrioFirst tdefs') = (tdefs ++ tdefs', gvars, natives)
-        accTrios (tdefs, gvars, natives) (TrioSecond gvars') = (tdefs, gvars++gvars', natives)
-        accTrios (tdefs, gvars, natives) (TrioThird natives') = (tdefs, gvars, natives++natives')
+parseJassModule :: SrcPos -> [Trio [TypeDef] [GlobalVar] [NativeDecl]] -> [Function] -> JassModule
+parseJassModule pos trios functions = let (tdefs, gvars, natives) = foldl accTrios ([], [], []) trios 
+  in JassModule pos tdefs gvars natives functions
+  where 
+      accTrios (tdefs, gvars, natives) (TrioFirst tdefs') = (tdefs ++ tdefs', gvars, natives)
+      accTrios (tdefs, gvars, natives) (TrioSecond gvars') = (tdefs, gvars++gvars', natives)
+      accTrios (tdefs, gvars, natives) (TrioThird natives') = (tdefs, gvars, natives++natives')
 
 -- | Parsing jass source
 parseJass :: String -- ^ Name of input (for displaying errors messages)
