@@ -1,0 +1,5 @@
+ghc: 7.8.3
+script:
+  - cabal install ./hashtables-1.0.1.8
+  - cabal install ./peggy-0.3.2
+  - cabal configure --enable-tests && cabal build && cabal test
