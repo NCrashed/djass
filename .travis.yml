@@ -1,3 +1,4 @@
+language: haskell
 ghc: 7.8.3
 script:
   - cabal install ./hashtables-1.0.1.8
