@@ -9,7 +9,7 @@ maintainer:     ncrashed@gmail.com
 copyright:      Anton Gushcha © 2013,2015
 category:       Language
 build-type:     Simple
-cabal-version:  >=1.8
+cabal-version:  >=1.10
 data-files:     
                 tests/blizzard.j,
                 tests/common.j
