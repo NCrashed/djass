@@ -1,16 +1,24 @@
 language: haskell
 ghc: 7.8.3
 
-install:
+before_install:
+ - sudo add-apt-repository ppa:hvr/ghc
  - sudo apt-cache policy happy
  - sudo apt-cache policy alex
+ - sudo apt-get install cabal-install-1.22
+ - sudo apt-get install happy-3.1.3 
+ - sudo apt-get install alex-1.19.4
+ - export PATH=/opt/cabal/1.22/bin:/opt/happy/1.19.4/bin:/opt/alex/3.1.3/bin:$PATH
+ 
+install:
  - cabal --version
  - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - travis_retry cabal update
  - cabal sandbox init
  - export PATH=$PATH:/home/travis/build/NCrashed/hjass/.cabal-sandbox/bin
- - if !cabal install ./hashtables-1.0.1.8; then cat /home/travis/build/NCrashed/hjass/.cabal-sandbox/logs/hashtables-1.0.1.8.log; exit 1;fi
- - if !cabal install ./peggy-0.3.2; then cat cat /home/travis/build/NCrashed/hjass/.cabal-sandbox/logs/haskell-src-exts-1.16.0.1.log; cat /home/travis/build/NCrashed/hjass/.cabal-sandbox/logs/peggy-0.3.2.log; exit 1;fi
+ - cabal install haskell-src-exts-1.16.0.1
+ - cabal install ./hashtables-1.0.1.8
+ - cabal install ./peggy-0.3.2
  
 script:
  - cabal install --dependencies-only
