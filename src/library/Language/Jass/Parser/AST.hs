@@ -1,6 +1,7 @@
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE DeriveDataTypeable #-}
 module Language.Jass.Parser.AST(
+    ShowIndent(..),
     JassType(..),
     Name, IsConstant, IsArray, IsDebug,
     JassModule(..),
@@ -18,20 +19,33 @@ module Language.Jass.Parser.AST(
     ) where
 
 import Data.Typeable
+import Control.Arrow (second)
 
+-- | Printing with indentation
+class ShowIndent a where
+  -- | As show but makes indentation with specified level
+  showIndent :: Int -> a -> String
+  
+-- | Default implementation of indentation
+makeIndent :: Int -> String
+makeIndent i = replicate i '\t'
+  
 -- | Supported types
 data JassType = JInteger | JReal | JBoolean | JString | JHandle | JCode | JArray JassType | JUserDefined String
     deriving (Eq, Ord, Typeable)
 
 instance Show JassType where
-    show JInteger = "integer"
-    show JReal = "real"
-    show JBoolean = "boolean"
-    show JString = "string"
-    show JHandle = "handle"
-    show JCode = "code"
-    show (JArray jtype) = "array " ++ show jtype
-    show (JUserDefined name) = name
+  show = showIndent 0
+  
+instance ShowIndent JassType where
+  showIndent i JInteger = makeIndent i ++ "integer"
+  showIndent i JReal = makeIndent i ++ "real"
+  showIndent i JBoolean = makeIndent i ++ "boolean"
+  showIndent i JString = makeIndent i ++ "string"
+  showIndent i JHandle = makeIndent i ++ "handle"
+  showIndent i JCode = makeIndent i ++ "code"
+  showIndent i (JArray jtype) = makeIndent i ++ "array " ++ show jtype
+  showIndent i (JUserDefined name) = makeIndent i ++ name
     
 -- Some type synonyms
 type Name = String
@@ -44,60 +58,84 @@ data JassModule = JassModule [TypeDef] [GlobalVar] [NativeDecl] [Function]
     deriving (Eq)
     
 instance Show JassModule where
-    show (JassModule typedefs globals natives functions) = 
-        newlineSep (map show typedefs) ++ "\n" ++
-        "globals\n" ++ newlineSep (map show globals) ++ "endglobals\n" ++
-        newlineSep (map show natives) ++ "\n" ++
-        sepWith "\n\n" (map show functions)
-        
+  show = showIndent 0
+  
+instance ShowIndent JassModule where
+  showIndent i (JassModule typedefs globals natives functions) = 
+      newlineSep (map (showIndent i) typedefs) ++ "\n" ++
+      globalsString ++
+      newlineSep (map (showIndent i) natives) ++ "\n" ++
+      sepWith "\n\n" (map (showIndent i) functions)
+      where globalsString = if null globals then "" else  "globals\n" ++ newlineSep (map (showIndent (i+1)) globals) ++ "\n" ++ makeIndent i ++ "endglobals\n"
+
 data TypeDef = TypeDef Name JassType
     deriving (Eq)
-    
+
 instance Show TypeDef where
-    show (TypeDef name extend) = "type " ++ name ++ " extends " ++ show extend
+  show = showIndent 0
+  
+instance ShowIndent TypeDef where
+    showIndent i (TypeDef name extend) = makeIndent i ++ "type " ++ name ++ " extends " ++ show extend
     
 data GlobalVar = GlobalVar IsConstant IsArray JassType Name (Maybe Expression)
     deriving (Eq)
-    
+
 instance Show GlobalVar where
-    show (GlobalVar isConstant False jtype name Nothing) = (if isConstant then "constant " else "") ++ "global " ++ show jtype ++ " " ++ name
-    show (GlobalVar isConstant False jtype name (Just expr)) = (if isConstant then "constant " else "") ++ "global " ++ show jtype ++ " " ++ name ++ " = " ++ show expr
-    show (GlobalVar isConstant True jtype name _) = (if isConstant then "constant " else "") ++ "global " ++ show jtype ++ " array " ++ name
+  show = showIndent 0 
+  
+instance ShowIndent GlobalVar where
+  showIndent i (GlobalVar isConstant False jtype name Nothing) = makeIndent i ++ (if isConstant then "constant " else "") ++ show jtype ++ " " ++ name
+  showIndent i (GlobalVar isConstant False jtype name (Just expr)) = makeIndent i ++ (if isConstant then "constant " else "") ++ show jtype ++ " " ++ name ++ " = " ++ show expr
+  showIndent i (GlobalVar isConstant True jtype name _) = makeIndent i ++ (if isConstant then "constant " else "") ++ show jtype ++ " array " ++ name
      
 data NativeDecl = NativeDecl IsConstant FunctionDecl
     deriving (Eq)
-    
+
 instance Show NativeDecl where
-    show (NativeDecl isConstant decl) = (if isConstant then "constant " else "") ++ "native " ++ show decl
+  show = showIndent 0
+   
+instance ShowIndent NativeDecl where
+  showIndent i (NativeDecl isConstant decl) = makeIndent i ++ (if isConstant then "constant " else "") ++ "native " ++ show decl
     
 data FunctionDecl = FunctionDecl Name [(JassType, Name)] (Maybe JassType)
     deriving (Eq)
-    
+
 instance Show FunctionDecl where
-    show (FunctionDecl name pars rtype) = name ++ " takes " ++ params ++ " returns " ++ maybe "nothing" show rtype
-        where params = if null pars then "nothing" else commaSep (map (\(t,a) -> show t ++ " " ++ show a) pars)
+  show = showIndent 0
+     
+instance ShowIndent FunctionDecl where
+  showIndent i (FunctionDecl name pars rtype) = makeIndent i ++ name ++ " takes " ++ params ++ " returns " ++ maybe "nothing" show rtype
+      where params = if null pars then "nothing" else commaSep (map (\(t,a) -> show t ++ " " ++ a) pars)
         
 data Function = Function IsConstant FunctionDecl [LocalVar] [Statement]
     deriving (Eq)
-    
+
 instance Show Function where
-    show (Function isConstant decl locals statements) = (if isConstant then "constant " else "") ++ show decl ++ "\n" ++ newlineSep (map show locals) ++ "\n" ++ newlineSep (map show statements)
-    
+  show = showIndent 0
+      
+instance ShowIndent Function where
+  showIndent i (Function isConstant decl locals statements) = makeIndent i ++ (if isConstant then "constant " else "") ++ "function " ++ show decl ++ "\n" ++ localsString ++ statementsString ++ makeIndent i ++ "endfunction"
+    where localsString = if null locals then "" else newlineSep (map (showIndent $ i+1) locals) ++ "\n"
+          statementsString = if null statements then "" else newlineSep (map (showIndent $ i+1) statements) ++ "\n"
+          
 data LocalVar = LocalVar IsArray JassType Name (Maybe Expression) 
     deriving (Eq)
-    
+
 instance Show LocalVar where
-    show (LocalVar False jtype name Nothing) = "local " ++ show jtype ++ name
-    show (LocalVar False jtype name (Just expr)) = "local " ++ show jtype ++ name ++ " = " ++ show expr
-    show (LocalVar True jtype name _) = "local " ++ show jtype ++ " array " ++ name  
+  show = showIndent 0
+     
+instance ShowIndent LocalVar where
+    showIndent i (LocalVar False jtype name Nothing) = makeIndent i ++ "local " ++ show jtype ++ " " ++ name
+    showIndent i (LocalVar False jtype name (Just expr)) = makeIndent i ++"local " ++ show jtype ++ " " ++ name ++ " = " ++ show expr
+    showIndent i (LocalVar True jtype name _) = makeIndent i ++ "local " ++ show jtype ++ " array " ++ name  
     
 -- Expressions
 data BinaryOperator = And | Or | Equal | NotEqual | GreaterEqual | LessEqual | Greater | Less | Summ | Substract | Multiply | Divide | Reminder
     deriving (Enum, Ord, Eq, Typeable)
     
 instance Show BinaryOperator where
-    show And = "&&"
-    show Or = "||"
+    show And = "and"
+    show Or = "or"
     show Equal = "=="
     show NotEqual = "!="
     show GreaterEqual = ">="
@@ -116,7 +154,7 @@ data UnaryOperator = Plus | Negation | Not
 instance Show UnaryOperator where
     show Plus = "+"
     show Negation = "-"
-    show Not = "!"
+    show Not = "not"
     
 data Expression where
     BinaryExpression :: BinaryOperator -> Expression -> Expression -> Expression
@@ -130,19 +168,23 @@ data Expression where
     RealLiteral :: Float -> Expression
     BoolLiteral :: Bool -> Expression
     NullLiteral :: Expression
-    
+ 
 instance Show Expression where
-    show (BinaryExpression op left right) = show left ++ " " ++ show op ++ " " ++ show right
-    show (UnaryExpression op value) = show op ++ " " ++ show value  
-    show (ArrayReference name index) = name ++ "[" ++ show index ++ "]"
-    show (FunctionCall name args) = name ++ "(" ++ commaSep (map show args) ++ ")"
-    show (FunctionReference name) = "function " ++ name
-    show (VariableReference name) = name
-    show (IntegerLiteral int) = show int
-    show (StringLiteral str) = "\"" ++ str ++ "\""
-    show (RealLiteral float) = show float
-    show (BoolLiteral bool) = show bool
-    show NullLiteral = "null"
+  show = showIndent 0 
+     
+instance ShowIndent Expression where
+    showIndent i (BinaryExpression op left right) = makeIndent i ++ "(" ++ show left ++ " " ++ show op ++ " " ++ show right ++ ")"
+    showIndent i (UnaryExpression op value) = makeIndent i ++ "(" ++ show op ++ " " ++ show value  ++ ")"
+    showIndent i (ArrayReference name index) = makeIndent i ++ name ++ "[" ++ show index ++ "]"
+    showIndent i (FunctionCall name args) = makeIndent i ++ name ++ "(" ++ commaSep (map show args) ++ ")"
+    showIndent i (FunctionReference name) = makeIndent i ++ "function " ++ name
+    showIndent i (VariableReference name) = makeIndent i ++ name
+    showIndent i (IntegerLiteral int) = makeIndent i ++ show int
+    showIndent i (StringLiteral str) = makeIndent i ++ "\"" ++ str ++ "\""
+    showIndent i (RealLiteral float) = makeIndent i ++ show float
+    showIndent i (BoolLiteral True) = makeIndent i ++ "true"
+    showIndent i (BoolLiteral False) = makeIndent i ++ "false"
+    showIndent i NullLiteral = makeIndent i ++ "null"
 
 instance Eq Expression where
     (BinaryExpression op1 left1 right1) == (BinaryExpression op2 left2 right2) = op1 == op2 && left1 == left2 && right1 == right2
@@ -167,19 +209,25 @@ data Statement where
     LoopStatement :: IsDebug -> [Statement] -> Statement
     ExitWhenStatement :: Expression -> Statement
     ReturnStatement :: Maybe Expression -> Statement
-    
+
 instance Show Statement where
-    show (SetStatement dbg name expr) = (if dbg then "debug " else "") ++ "set " ++ name ++ " = " ++ show expr
-    show (SetArrayStatement dbg name index expr) = (if dbg then "debug" else "") ++ "set " ++ name ++ "[" ++ show index ++ "] = " ++ show expr
-    show (IfThenElseStatement dbg cond thenStmts elseClauses) = (if dbg then "debug" else "") ++ "if " ++ show cond 
-        ++ " then\n" ++ newlineSep (map show thenStmts) ++ newlineSep (map showElseClause elseClauses) ++ "endif"
-        where showElseClause (Nothing, stmts) = "else\n" ++ newlineSep (map show stmts)
-              showElseClause (Just econd, stmts) = "elseif " ++ show econd ++ " then\n" ++ newlineSep (map show stmts)  
-    show (CallStatement dbg name args) = (if dbg then "debug " else "") ++ "call " ++ name ++ "(" ++ commaSep (map show args) ++ ")"
-    show (LoopStatement dbg stmts) = (if dbg then "debug " else "") ++ "loop\n" ++ newlineSep (map show stmts) ++ "endloop"
-    show (ExitWhenStatement cond) = "exitwhen " ++ show cond
-    show (ReturnStatement Nothing) = "return"
-    show (ReturnStatement (Just expr)) = "return " ++ show expr
+  show = showIndent 0
+      
+instance ShowIndent Statement where
+    showIndent i (SetStatement dbg name expr) = makeIndent i ++ (if dbg then "debug " else "") ++ "set " ++ name ++ " = " ++ show expr
+    showIndent i (SetArrayStatement dbg name index expr) = makeIndent i ++ (if dbg then "debug" else "") ++ "set " ++ name ++ "[" ++ show index ++ "] = " ++ show expr
+    showIndent i (IfThenElseStatement dbg cond thenStmts elseClauses) = makeIndent i ++ (if dbg then "debug" else "") ++ "if " ++ show cond 
+        ++ " then\n" ++ thenClauseString ++ elseClauseString ++ makeIndent i ++ "endif"
+        where thenClauseString = if null thenStmts then "" else newlineSep (map (showIndent $ i+1) thenStmts) ++ "\n" 
+              elseClauseString = if null elseClauses then "" else newlineSep (map showElseClause elseClauses) ++ "\n"
+              showElseClause (Nothing, stmts) = makeIndent i ++ "else\n" ++ newlineSep (map (showIndent $ i+1) stmts)
+              showElseClause (Just econd, stmts) = makeIndent i ++ "elseif " ++ show econd ++ " then\n" ++ newlineSep (map (showIndent $ i+1) stmts)  
+    showIndent i (CallStatement dbg name args) = makeIndent i ++ (if dbg then "debug " else "") ++ "call " ++ name ++ "(" ++ commaSep (map show args) ++ ")"
+    showIndent i (LoopStatement dbg stmts) = makeIndent i ++ (if dbg then "debug " else "") ++ "loop\n" ++ stmtsString ++ makeIndent i ++ "endloop"
+      where stmtsString = if null stmts then "" else newlineSep (map (showIndent $ i+1) stmts) ++ "\n"
+    showIndent i (ExitWhenStatement cond) = makeIndent i ++ "exitwhen " ++ show cond
+    showIndent i (ReturnStatement Nothing) = makeIndent i ++ "return"
+    showIndent i (ReturnStatement (Just expr)) = makeIndent i ++ "return " ++ show expr
 
 instance Eq Statement where
     (SetStatement dbg1 name1 expr1) == (SetStatement dbg2 name2 expr2) = dbg1 == dbg2 && name1 == name2 && expr1 == expr2
@@ -195,14 +243,16 @@ instance Eq Statement where
 setDebugStatement :: Bool -> Statement -> Statement
 setDebugStatement flag (SetStatement _ name expr) = SetStatement flag name expr
 setDebugStatement flag (SetArrayStatement _ name index expr) = SetArrayStatement flag name index expr
-setDebugStatement flag (IfThenElseStatement _ cond thenStmts elseClauses) = IfThenElseStatement flag cond thenStmts elseClauses
+setDebugStatement flag (IfThenElseStatement _ cond thenStmts elseClauses) = IfThenElseStatement flag cond 
+  (fmap (setDebugStatement flag) thenStmts) 
+  (fmap (second $ fmap (setDebugStatement flag)) elseClauses)
 setDebugStatement flag (CallStatement _ name args) = CallStatement flag name args
-setDebugStatement flag (LoopStatement _ stmts) = LoopStatement flag stmts
+setDebugStatement flag (LoopStatement _ stmts) = LoopStatement flag $ fmap (setDebugStatement flag) stmts
 setDebugStatement _ (ExitWhenStatement cond) = ExitWhenStatement cond
 setDebugStatement _ (ReturnStatement expr) = ReturnStatement expr
  
 commaSep :: [String] -> String
-commaSep = sepWith ","
+commaSep = sepWith ", "
 
 newlineSep :: [String] -> String
 newlineSep = sepWith "\n"

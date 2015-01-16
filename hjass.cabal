@@ -9,7 +9,6 @@ maintainer:     ncrashed@gmail.com
 copyright:      Anton Gushcha © 2013,2015
 category:       Language
 build-type:     Simple
-default-language:  Haskell2010  
 cabal-version:  >=1.8
 data-files:     
                 tests/blizzard.j,

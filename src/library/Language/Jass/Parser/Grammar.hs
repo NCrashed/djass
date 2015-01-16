@@ -7,7 +7,16 @@
 {-# OPTIONS_GHC -fno-warn-unused-matches #-}
 module Language.Jass.Parser.Grammar(
     parseJass,
-    parseJassFile
+    parseJassFile,
+    parseJassFunction,
+    parseJassLocalVar,
+    parseJassGlobalVar,
+    parseJassTwoGlobalVars,
+    parseJassGlobalVars,
+    parseJassTypeDef,
+    parseJassNative,
+    parseJassExpression,
+    parseJassStatement
     ) where
     
 import Text.Peggy hiding(space)
@@ -38,21 +47,22 @@ data Trio a b c = TrioFirst a | TrioSecond b | TrioThird c
     keyword :: () = "type" / "extends" / "null" / "true" / "false" / "function" / "constant"
         / "mod" / "and" / "or" / "not" / "native" / "returns" / "take" / "globals" / "endglobals"
         / "nothing" / "native" / "endfunction" / "local" / "array"
-        / "set" / "call" / "if" / "then" / "endif" / "elseif"
+        / "set" / "call" / "if" / "then" / "endif" / "elseif" / "else"
         / "loop" / "endloop" / "exitwhen" / "return" / "debug"
     identifier :: String = !keyword alpha alphanum* {[$1] ++ $2}
     
     jassType :: JassType = "integer" {JInteger} / "real" {JReal} / "boolean" {JBoolean} / "string" {JString} / "handle" {JHandle} / "code" {JCode} / identifier {JUserDefined $1}
     typeDef :: TypeDef = "type" identifier "extends" jassType {TypeDef $1 $2}
    
-    escapeSequence :: Char = backslash (quote / doublequote / backslash / [abfnrtv]) { $2 }
+    escapeSequence :: Char = backslash (quote / doublequote / backslash 
+      / 'a' {'\a'} / 'b' {'\b'} / 'f' {'\f'} / 'n' {'\n'} / 'r' {'\r'} / 't' {'\t'} / 'v' {'\v'}) { $2 }
     dqchar :: Char = escapeSequence / !doublequote .
     stringLiteral :: Expression = doublequote (dqchar)* doublequote {StringLiteral $2}
     
-    integer :: Int = digit+ {read $1}
+    integer :: String = digit+
     sign :: Char = [-] / [+]
     decimal :: Int = [1-9][0-9]* {parseDecimal ([$1] ++ $2)}
-    octal :: Int = '0'[0-7]* {parseOctal $1}
+    octal :: Int = '0'[0-7]* {if null $1 then 0 else parseOctal $1}
     hex :: Int = '$'[0-9a-fA-F]+ {parseHex $1} / '0'[xX][0-9a-fA-F]+ {parseHex $2}
     rawcode :: Int = quote . . . . quote {parseRawCode [$2,$3,$4,$5]}
     
@@ -76,10 +86,10 @@ data Trio a b c = TrioFirst a | TrioSecond b | TrioThird c
     notOp :: UnaryOperator = "not" {AST.Not}
     plus :: UnaryOperator = "+" {Plus}
     negation :: UnaryOperator = "-" {Negation}
-    unaryExpression :: Expression = postfixExpression / (plus / negation / notOp) expression {UnaryExpression $1 $2}
+    unaryExpression :: Expression = postfixExpression / (plus / negation / notOp) unaryExpression {UnaryExpression $1 $2}
     
     summ :: BinaryOperator = "+" {Summ}
-    subs :: BinaryOperator = "+" {Substract}
+    subs :: BinaryOperator = "-" {Substract}
     mult :: BinaryOperator = "*" {Multiply}
     divOp :: BinaryOperator = "/" {Divide}
     modOp :: BinaryOperator = "mod" {Reminder}
@@ -101,21 +111,24 @@ data Trio a b c = TrioFirst a | TrioSecond b | TrioThird c
     expression :: Expression = orExpression
     
     constant :: () = "constant" {()}
-    podVarDecl :: GlobalVar = constant? jassType identifier ("=" expression)? {GlobalVar (isJust $1) False $2 $3 $4}
-    arrayVarDecl :: GlobalVar = constant? jassType "array" identifier {GlobalVar (isJust $1) True $2 $3 Nothing}
+    -- Additional space* is a workaround around bug in peggy
+    podVarDecl :: GlobalVar = constant? space* jassType space* identifier ("=" expression)? {GlobalVar (isJust $1) False $3 $5 $6}
+    arrayVarDecl :: GlobalVar = constant? space* jassType "array" identifier {GlobalVar (isJust $1) True $3 $4 Nothing}
     globalVar :: GlobalVar = podVarDecl / arrayVarDecl
     globalVars :: [GlobalVar] = "globals" globalVar* "endglobals"
     
-    param :: (JassType, Name) = jassType identifier {($1, $2)}
+    -- Additional space* is a workaround around bug in peggy
+    param :: (JassType, Name) = jassType space* identifier {($1, $3)}
     paramList :: [(JassType, Name)] = param ("," param)* {[$1] ++ $2}
     functionDecl :: FunctionDecl = identifier "takes" ("nothing" {[]} / paramList) "returns" (jassType {Just $1} / "nothing" {Nothing}) {FunctionDecl $1 $2 $3}
     nativeDecl :: NativeDecl = constant? "native" functionDecl {NativeDecl (isJust $1) $2}
     function :: Function = constant? "function" functionDecl localVarList statementList "endfunction" {Function (isJust $1) $2 $3 $4}
     
     localVarList :: [LocalVar] = localVar*
-    podLocalVar :: LocalVar = jassType identifier ("=" expression)? {LocalVar False $1 $2 $3}
-    arrayLocalVar :: LocalVar = jassType "array" identifier {LocalVar True $1 $2 Nothing}
-    localVar :: LocalVar = podLocalVar / arrayLocalVar
+    -- Additional space* is a workaround around bug in peggy
+    podLocalVar :: LocalVar = space* jassType space* identifier ("=" expression)? {LocalVar False $2 $4 $5}
+    arrayLocalVar :: LocalVar =  space* jassType "array" identifier {LocalVar True $2 $3 Nothing}
+    localVar :: LocalVar = "local" (podLocalVar / arrayLocalVar)
     
     statementList :: [Statement] = statement*
     statement :: Statement = setStatement / callStatement / ifThenElseStatement / loopStatement / exitWhenStatement / returnStatement / debugStatement
@@ -127,6 +140,9 @@ data Trio a b c = TrioFirst a | TrioSecond b | TrioThird c
     exitWhenStatement :: Statement = "exitwhen" expression {ExitWhenStatement $1}
     returnStatement :: Statement = "return" expression? {ReturnStatement $1}
     debugStatement :: Statement = "debug" (setStatement / callStatement / ifThenElseStatement / loopStatement) {setDebugStatement True $1}
+
+    -- DEBUG
+    twoGlobals :: (GlobalVar, GlobalVar) = globalVar globalVar
 |]
 
 parseDecimal :: String -> Int
@@ -170,15 +186,15 @@ parseIntLiteral :: Maybe Char -> Int -> Int
 parseIntLiteral (Just '-') i = -i
 parseIntLiteral _ i = i
 
-parseRealLiteral :: Maybe Char -> Maybe Int -> Maybe Int -> Maybe (Maybe Char, Int) -> Float
-parseRealLiteral csign intPart decPart expPart = read $ convSign csign ++ show (fromMaybe 0 intPart) ++ "." ++ show (fromMaybe 0 decPart) ++ expPartStr expPart
+parseRealLiteral :: Maybe Char -> Maybe String -> Maybe String -> Maybe (Maybe Char, String) -> Float
+parseRealLiteral csign intPart decPart expPart = read $ convSign csign ++ fromMaybe "0" intPart ++ "." ++ fromMaybe "0" decPart ++ expPartStr expPart
     where
         convSign :: Maybe Char -> String
         convSign (Just '-') = "-"
-        convSign _ = "+"
+        convSign _ = ""
         
-        expPartStr :: Maybe (Maybe Char, Int) -> String
-        expPartStr (Just (esign, emantis)) = convSign esign ++ show emantis
+        expPartStr :: Maybe (Maybe Char, String) -> String
+        expPartStr (Just (esign, emantis)) = "e" ++ convSign esign ++ emantis
         expPartStr _ = ""
         
 parseBinaryExpression :: Expression -> Maybe (BinaryOperator, Expression) -> Expression
@@ -197,6 +213,60 @@ parseJass :: String -- ^ Name of input (for displaying errors messages)
     -> String -- ^ String with jass source 
     -> Either ParseError JassModule -- ^ Error or AST
 parseJass = parseString jassModule
+
+-- | Parsing jass grammar subset 
+parseJassFunction :: String -- ^ Name of input (for displaying errors messages)
+    -> String -- ^ String with jass source 
+    -> Either ParseError Function -- ^ Error or AST
+parseJassFunction = parseString function
+
+-- | Parsing jass grammar subset 
+parseJassLocalVar :: String -- ^ Name of input (for displaying errors messages)
+    -> String -- ^ String with jass source 
+    -> Either ParseError LocalVar -- ^ Error or AST
+parseJassLocalVar = parseString localVar
+
+-- | Parsing jass grammar subset 
+parseJassGlobalVar :: String -- ^ Name of input (for displaying errors messages)
+    -> String -- ^ String with jass source 
+    -> Either ParseError GlobalVar -- ^ Error or AST
+parseJassGlobalVar = parseString globalVar
+
+-- | Parsing jass grammar subset (debug function)
+parseJassTwoGlobalVars :: String -- ^ Name of input (for displaying errors messages)
+    -> String -- ^ String with jass source 
+    -> Either ParseError (GlobalVar, GlobalVar) -- ^ Error or AST
+parseJassTwoGlobalVars = parseString twoGlobals
+
+-- | Parsing jass grammar subset 
+parseJassGlobalVars :: String -- ^ Name of input (for displaying errors messages)
+    -> String -- ^ String with jass source 
+    -> Either ParseError [GlobalVar] -- ^ Error or AST
+parseJassGlobalVars = parseString globalVars
+
+-- | Parsing jass grammar subset 
+parseJassTypeDef :: String -- ^ Name of input (for displaying errors messages)
+    -> String -- ^ String with jass source 
+    -> Either ParseError TypeDef -- ^ Error or AST
+parseJassTypeDef = parseString typeDef
+
+-- | Parsing jass grammar subset 
+parseJassNative :: String -- ^ Name of input (for displaying errors messages)
+    -> String -- ^ String with jass source 
+    -> Either ParseError NativeDecl -- ^ Error or AST
+parseJassNative = parseString nativeDecl
+
+-- | Parsing jass grammar subset 
+parseJassExpression :: String -- ^ Name of input (for displaying errors messages)
+    -> String -- ^ String with jass source 
+    -> Either ParseError Expression -- ^ Error or AST
+parseJassExpression = parseString expression
+
+-- | Parsing jass grammar subset 
+parseJassStatement :: String -- ^ Name of input (for displaying errors messages)
+    -> String -- ^ String with jass source 
+    -> Either ParseError Statement -- ^ Error or AST
+parseJassStatement = parseString statement
 
 -- | Parsing jass source from file
 parseJassFile :: FilePath -- ^ File path with jass source 
