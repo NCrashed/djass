@@ -56,16 +56,15 @@ install:
  - cabal --version
  - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - travis_retry cabal update
- - cabal install --only-dependencies --enable-tests --enable-benchmarks
+ - cabal sandbox init
+ - cabal install ./hashtables-1.0.1.8
+ - cabal install ./peggy-0.3.2
 
 # Here starts the actual work to be performed for the package under
 # test; any command which exits with a non-zero exit code causes the
 # build to fail.
 script:
  - if [ -f configure.ac ]; then autoreconf -i; fi
- - cabal sandbox init
- - cabal install ./hashtables-1.0.1.8
- - cabal install ./peggy-0.3.2
  - cabal build
  - cabal test
  - cabal check
