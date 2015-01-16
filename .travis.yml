@@ -7,27 +7,15 @@ install:
  - travis_retry cabal update
  - cabal sandbox init
  - export PATH=$PATH:/home/travis/build/NCrashed/hjass/.cabal-sandbox/bin
- - if ! cabal install happy; then
- -   cat "$HOME"/.cabal/logs/haskell-src-exts-*.log
- -   exit 1
- - fi
- - if ! cabal install alex; then
- -   cat "$HOME"/.cabal/logs/haskell-src-exts-*.log
- -   exit 1
- - fi
- - if ! cabal install ./hashtables-1.0.1.8; then
- -   cat "$HOME"/.cabal/logs/haskell-src-exts-*.log
- -   exit 1
- - fi
- - if ! cabal install ./peggy-0.3.2; then
- -   cat "$HOME"/.cabal/logs/haskell-src-exts-*.log
- -   exit 1
- - fi
+ - cabal install happy --verbose
+ - cabal install alex --verbose
+ - cabal install ./hashtables-1.0.1.8 --verbose
+ - cabal install ./peggy-0.3.2 --verbose
 
 script:
- - cabal build
- - cabal test
- - cabal check
+ - cabal build --verbose
+ - cabal test --verbose
+ - cabal check --verbose
  # tests that a source-distribution can be generated
  - cabal sdist
 
