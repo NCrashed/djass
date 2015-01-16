@@ -10,7 +10,6 @@ install:
  - cabal sandbox init
  - export PATH=$PATH:/home/travis/build/NCrashed/hjass/.cabal-sandbox/bin
  - if [ !cabal install ./hashtables-1.0.1.8 ]; then cat /home/travis/build/NCrashed/hjass/.cabal-sandbox/logs/hashtables-1.0.1.8.log; exit 1;fi
- - cabal install ./peggy-0.3.2 --verbose
  - if [ !cabal install ./peggy-0.3.2 ]; then cat cat /home/travis/build/NCrashed/hjass/.cabal-sandbox/logs/haskell-src-exts-1.16.0.1.log; cat /home/travis/build/NCrashed/hjass/.cabal-sandbox/logs/peggy-0.3.2.log; exit 1;fi
  
 script:
