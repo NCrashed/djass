@@ -57,6 +57,9 @@ install:
  - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - travis_retry cabal update
  - cabal sandbox init
+ - export PATH=$PATH:/home/travis/build/NCrashed/hjass/.cabal-sandbox/bin
+ - cabal install happy
+ - cabal install alex
  - cabal install ./hashtables-1.0.1.8
  - cabal install ./peggy-0.3.2
 
