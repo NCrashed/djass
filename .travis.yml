@@ -23,7 +23,7 @@ install:
  - cabal install haskell-src-exts-1.16.0.1
  - cabal install ./hashtables-1.0.1.8
  - cabal install ./peggy-0.3.2
- - cabal install HUnit tasty tasty-unit tasty-quickcheck
+ - cabal install HUnit tasty tasty-hunit tasty-quickcheck
  
 script:
  - cabal install --dependencies-only
