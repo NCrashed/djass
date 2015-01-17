@@ -1,21 +1,4 @@
 module Language.Jass.Semantic.Context(
-  -- | Variable utilities
-  Variable(..),
-  getVarName,
-  getVarPos,
-  getVarConstness,
-  getVarInitializator,
-  getVarType,
-  isVarArray,
-  -- | Utilities to operate with function and natives
-  Callable(..),
-  getCallableName,
-  getCallablePos,
-  getCallableConstness,
-  getCallableParameters,
-  -- | Error handling
-  SemanticError(..),
-  updateErrorMsg,
   -- | Context operations
   JassSem,
   newContext,
@@ -25,88 +8,29 @@ module Language.Jass.Semantic.Context(
   registerCallable,
   getVariable,
   registerVariable,
-  removeVariable
-  ) where
+  removeVariable,
   
+  module Reexports
+  ) where
+
 import Language.Jass.Parser.AST
+import Language.Jass.Semantic.Callable as Reexports
+import Language.Jass.Semantic.Variable as Reexports
+import Language.Jass.Semantic.SemanticError  as Reexports
 import qualified Data.HashTable.ST.Cuckoo as HT
 import Control.Monad.ST
 import Control.Monad.State.Strict
 import Control.Monad.Error
 
-data Variable = VarGlobal GlobalVar | VarLocal LocalVar | VarParam Parameter 
+type Name = String
 
--- | Returns variable name
-getVarName :: Variable -> String
-getVarName (VarGlobal (GlobalVar _ _ _ _ name _)) = name
-getVarName (VarLocal (LocalVar _ _ _ name _)) = name
-getVarName (VarParam (Parameter _ _ name)) = name
-
--- | Returns variable source poistion
-getVarPos :: Variable -> SrcPos
-getVarPos (VarGlobal (GlobalVar pos _ _ _ _ _)) = pos
-getVarPos (VarLocal (LocalVar pos _ _ _ _)) = pos
-getVarPos (VarParam (Parameter pos _ _)) = pos
-
--- | Returns if variable is immutable
-getVarConstness :: Variable -> Bool
-getVarConstness (VarGlobal (GlobalVar _ flag _ _ _ _)) = flag
-getVarConstness (VarLocal _) = False
-getVarConstness (VarParam _) = False
-
--- | Returns variable initializator
-getVarInitializator :: Variable -> Maybe Expression
-getVarInitializator (VarGlobal (GlobalVar _ _ _ _ _ initalizer)) = initalizer
-getVarInitializator (VarLocal (LocalVar _ _ _ _ initalizer)) = initalizer
-getVarInitializator (VarParam _) = Nothing
-
--- | Returns variable type
-getVarType :: Variable -> JassType
-getVarType (VarGlobal (GlobalVar _ _ _ jtype _ _)) = jtype
-getVarType (VarLocal (LocalVar _ _ jtype _ _)) = jtype
-getVarType (VarParam (Parameter _ jtype _)) = jtype
-
--- | Returns if variable is array
-isVarArray :: Variable -> Bool
-isVarArray (VarGlobal (GlobalVar _ flag _ _ _ _)) = flag
-isVarArray (VarLocal (LocalVar _ flag _ _ _)) = flag
-isVarArray (VarParam _) = False
-
-data Callable = CallableNative NativeDecl | CallableFunc Function
-
--- | Returns function or native name
-getCallableName :: Callable -> String
-getCallableName (CallableNative (NativeDecl _ _ funcDecl)) = getFuncDeclName funcDecl
-getCallableName (CallableFunc (Function _ _ funcDecl _ _)) = getFuncDeclName funcDecl
-
--- | Returns source position of native or function declaration
-getCallablePos :: Callable -> SrcPos
-getCallablePos (CallableNative (NativeDecl pos _ _)) = pos
-getCallablePos (CallableFunc (Function pos _ _ _ _)) = pos
-
--- | Returns constness flag of native or function
-getCallableConstness :: Callable -> Bool
-getCallableConstness (CallableNative (NativeDecl _ constness _)) = constness
-getCallableConstness (CallableFunc (Function _ constness _ _ _)) = constness
-
--- | Returns formal parameters of native or function
-getCallableParameters :: Callable -> [Parameter]
-getCallableParameters (CallableNative (NativeDecl _ _ decl)) = getFuncDeclParameters decl
-getCallableParameters (CallableFunc (Function _ _ decl _ _)) = getFuncDeclParameters decl
-
-data SemanticError = SemanticError SrcPos String 
-
--- | Updating error message without changing source position
-updateErrorMsg :: SemanticError -> (SrcPos -> String) -> SemanticError
-updateErrorMsg (SemanticError pos _) msgFunc = SemanticError pos $ msgFunc pos
- 
-instance Error SemanticError where
-  noMsg = strMsg ""
-  strMsg = SemanticError (SrcPos "" 0 0 0)
-  
+-- | Hash table with type declarations mapping 
 type TypeDeclarations s = HT.HashTable s Name TypeDef
+-- | Hash table with function/natives declarations mapping
 type FunctionDeclarations s = HT.HashTable s Name Callable
+-- | Hash table with variable declarations (including locals and function parameters)
 type VariableDeclarations s = HT.HashTable s Name Variable
+-- | Context is a symbol table
 type JassContext s = (TypeDeclarations s, FunctionDeclarations s, VariableDeclarations s)
 
 -- | Creating empty context

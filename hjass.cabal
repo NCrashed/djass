@@ -25,6 +25,11 @@ library
   default-language:  Haskell2010
   hs-source-dirs:    src/library
   exposed-modules:   Language.Jass.Parser.Grammar
+  other-modules:   
+                   Language.Jass.Parser.AST.FunctionDecl,
+                   Language.Jass.Parser.AST.LocalVar,
+                   Language.Jass.Parser.AST.Expression,
+                   Language.Jass.Parser.AST.Statement
 
 test-suite syntax-tests
   type:            exitcode-stdio-1.0
@@ -44,7 +49,11 @@ test-suite syntax-tests
                   Language.Jass.Parser.AST,
                   Language.Jass.Parser.ASTTest,
                   Language.Jass.Parser.Grammar,
-                  Language.Jass.Parser.GrammarTest
+                  Language.Jass.Parser.GrammarTest,
+                  Language.Jass.Parser.AST.FunctionDecl,
+                  Language.Jass.Parser.AST.LocalVar,
+                  Language.Jass.Parser.AST.Expression,
+                  Language.Jass.Parser.AST.Statement
   hs-source-dirs:  
                   src/library,
                   test-suites

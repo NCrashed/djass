@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiWayIf #-}
 module Language.Jass.Semantic.Check(
   checkModuleSemantic
   ) where
@@ -68,8 +69,9 @@ instance SemanticCheck Variable where
           Just initExpr -> do
             checkSemantic initExpr noMsg
             exprType <- inferType initExpr
-            unless (exprType `typeSubsetOf` jtype) $
-              throwError $ SemanticError (getExpressionPos initExpr) $ "Type mismatch in variable initial value, expected " ++
+            cond <- exprType `typeSubsetOf` jtype
+            unless cond $ throwError $ SemanticError (getExpressionPos initExpr) $ 
+              "Type mismatch in variable initial value, expected " ++
                 show jtype ++ " but got " ++ show exprType
         
 instance SemanticCheck Parameter where
@@ -162,7 +164,8 @@ instance SemanticCheck Function where
         unless (isJust retType) $ throwError $ SemanticError (getExpressionPos expr) $
           "Type mismatch in return, expected nothing, but got " ++ show exprType
         let retType' = fromJust retType
-        unless (exprType `typeSubsetOf` retType') $ throwError $ SemanticError (getExpressionPos expr) $ 
+        cond <- exprType `typeSubsetOf` retType'
+        unless cond $ throwError $ SemanticError (getExpressionPos expr) $ 
           "Type mismatch in return, expected "++ show retType' ++", but got " ++ show exprType
       checkReturnType (LoopStatement _ _ loopStmts) = mapM_ checkReturnType loopStmts
       checkReturnType (IfThenElseStatement _ _ _ thenStmts elseClauses) = do
@@ -224,7 +227,8 @@ checkVariableExpr name expr = do
       checkSemantic expr noMsg
       exprType <- inferType expr 
       let varType = getVarType var
-      unless (exprType `typeSubsetOf` varType) $
+      cond <- exprType `typeSubsetOf` varType
+      unless cond $
         throwError $ SemanticError (getExpressionPos expr) $ "Type mismatch, expected " 
           ++ show varType ++ " but got " ++ show exprType
 
@@ -253,7 +257,16 @@ checkFunctionName src name = do
   case mfunc of
     Just _ -> return ()
     Nothing -> throwError $ SemanticError src $ "Unknown function/native " ++ name
-    
+
+-- | Checks that return type of function is not nothing
+checkFunctionReturnType :: SrcPos -> String -> JassSem s ()
+checkFunctionReturnType src name = do
+  mfunc <- getCallable name
+  case mfunc of
+    Nothing -> return ()
+    Just callable -> unless (isJust $ getCallableReturnType callable) $ throwError $
+      SemanticError src $ "Cannot use function " ++ name ++ " in expression, it has nothing return type"
+          
 -- | Checks if argument count matches
 checkFunctionArgsCount :: SrcPos -> String -> Int -> JassSem s ()
 checkFunctionArgsCount src name argsCount = do
@@ -277,17 +290,18 @@ checkFunctionArgs name args = do
       checkSemantic argExpr noMsg
       argType <- inferType argExpr
       let parType = getParamType parameter
-      unless (argType `typeSubsetOf` parType) $ throwError $ SemanticError (getParamPos parameter) $ 
+      cond <- argType `typeSubsetOf` parType
+      unless cond $ throwError $ SemanticError (getParamPos parameter) $ 
         "Type mismatch at function argument " ++ show i ++ ", expected " ++ show parType ++ " but got " ++ show argType
                                                     
 instance SemanticCheck Expression where
   checkSemantic (BinaryExpression _ op left right) _ = do
     checkSemantic left noMsg
     checkSemantic right noMsg
-    case op of
-      And -> left `typeEqual` JBoolean >> right `typeEqual` JBoolean
-      Or -> left `typeEqual` JBoolean >> right `typeEqual` JBoolean
-      _ -> left `typeConforms` right
+    if | op == And || op == Or -> left `typeEqual` JBoolean >> right `typeEqual` JBoolean
+       | op == Reminder -> left `typeEqual` JInteger >> right `typeEqual` JInteger
+       | isArithmeticOperator op -> typeCheckArithmetic op left right
+       | isRelationalOperator op -> typeCheckRelational op left right
   checkSemantic (UnaryExpression _ op expr) _ = do
     checkSemantic expr noMsg
     case op of
@@ -300,6 +314,7 @@ instance SemanticCheck Expression where
     indexExpr `typeEqual` JInteger
   checkSemantic (FunctionCall src name args) _ = do
     checkFunctionName src name
+    checkFunctionReturnType src name
     checkFunctionArgsCount src name $ length args
     checkFunctionArgs name args
   checkSemantic (FunctionReference src name) _ = checkFunctionName src name
@@ -315,16 +330,6 @@ expr `typeEqual` t2 = do
       "Type mismatch in expression, expected " ++
         show t1 ++ ", but got " ++ show t2    
 
--- | Checks if expression types conforms
-typeConforms :: Expression -> Expression -> JassSem s ()
-expr1 `typeConforms` expr2 = do
-  t1 <- inferType expr1
-  t2 <- inferType expr2
-  unless (t1 `conform` t2) $ throwError $
-    SemanticError (getExpressionPos expr1) $
-      "Type mismatch in expression, cannot combine " ++
-        show t1 ++ " and " ++ show t2    
-
 -- | Checks if expression is numeric type        
 checkNumeric :: Expression -> JassSem s ()
 checkNumeric expr = do
@@ -332,3 +337,27 @@ checkNumeric expr = do
   unless (isNumericType t1) $ throwError $
     SemanticError (getExpressionPos expr) $
       "Type mismatch in expression, expected numeric type, but got " ++ show t1
+
+-- | Performs type checking for expression arithmetic operators    
+typeCheckArithmetic :: BinaryOperator -> Expression -> Expression -> JassSem s ()
+typeCheckArithmetic op expr1 expr2 = typeCheckBinaryExpression assertion op expr1 expr2
+  where 
+    assertion gt t1 t2 = unless (gt == JInteger || gt == JReal) $ throwError $ 
+      SemanticError (getExpressionPos expr1) $ 
+        "Type mismatch, cannot use " ++ show t1 ++ " and " ++ show t2 ++ " in " ++ show op
+
+-- | Performs type checking for relational operators (==, !=, >, <, >=, <=)      
+typeCheckRelational :: BinaryOperator -> Expression -> Expression -> JassSem s ()
+typeCheckRelational = typeCheckBinaryExpression (const.const.const $ return ())
+
+-- | Type checking binary operator, first assertion takes general type of left and right expressions
+typeCheckBinaryExpression :: (JassType -> JassType -> JassType -> JassSem s ()) 
+  -> BinaryOperator -> Expression -> Expression -> JassSem s ()
+typeCheckBinaryExpression assertion op expr1 expr2 = do
+  t1 <- inferType expr1
+  t2 <- inferType expr2
+  mgt <- getGeneralType t1 t2
+  case mgt of
+    Nothing -> throwError $ SemanticError (getExpressionPos expr1) $ 
+      "Type mismatch, cannot use " ++ show t1 ++ " and " ++ show t2 ++ " in " ++ show op
+    Just gt -> assertion gt t1 t2
