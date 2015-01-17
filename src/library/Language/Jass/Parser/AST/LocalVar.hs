@@ -1,5 +1,6 @@
 module Language.Jass.Parser.AST.LocalVar(
-  LocalVar(..)
+  LocalVar(..),
+  getLocalVarName
   ) where
   
 import Text.Peggy (SrcPos(..))
@@ -24,3 +25,6 @@ instance Eq LocalVar where
   (LocalVar _ arr1 jtype1 name1 init1) == (LocalVar _ arr2 jtype2 name2 init2) =
     arr1 == arr2 && jtype1 == jtype2 && name1 == name2 && init1 == init2
 
+-- | Returns name of local variable
+getLocalVarName :: LocalVar -> String
+getLocalVarName (LocalVar _ _ _ name _) = name

@@ -7,7 +7,12 @@ import Language.Jass.ShowIndent
 import Data.Typeable
 
 -- | Supported types
-data JassType = JInteger | JReal | JBoolean | JString | JHandle | JCode | JArray JassType | JUserDefined String
+data JassType = JInteger | JReal | JBoolean | JString 
+    | JNull -- ^ Special type for null value, allow to use null as any handle type
+    | JHandle 
+    | JCode 
+    | JArray JassType 
+    | JUserDefined String
     deriving (Eq, Ord, Typeable)
 
 instance Show JassType where
@@ -22,3 +27,4 @@ instance ShowIndent JassType where
   showIndent i JCode = makeIndent i ++ "code"
   showIndent i (JArray jtype) = makeIndent i ++ "array " ++ show jtype
   showIndent i (JUserDefined name) = makeIndent i ++ name
+  showIndent i JNull = makeIndent i ++ "null"

@@ -82,14 +82,15 @@ syntaxTests = testGroup "Syntax tests"
       testCase "globals" $
         parseTestModule
           ("globals\n" ++
-           "real global1\n" ++
-           "integer global2 = 0\n" ++
-           "constant real global3 = 3.14\n" ++
-           "handle array global4\n" ++
-           "constant widget array global5\n" ++ 
-           "constant playercolor global6 = ConvertPlayerColor(0)\n" ++ 
-           "constant integer   bj_ELEVATOR_WALL_TYPE_WEST       = 4\n" ++
-           "force              bj_FORCE_ALL_PLAYERS        = null\n" ++
+              "real global1\n" ++
+              "integer global2 = 0\n" ++
+              "constant real global3 = 3.14\n" ++
+              "handle array global4\n" ++
+              "constant widget array global5\n" ++ 
+              "constant playercolor global6 = ConvertPlayerColor(0)\n" ++ 
+              "constant integer   bj_ELEVATOR_WALL_TYPE_WEST       = 4\n" ++
+              "constant real      bj_PI                            = 3.14159\n" ++
+              "force              bj_FORCE_ALL_PLAYERS        = null\n" ++
            "endglobals")
           (JassModule nosrc [] [
             GlobalVar nosrc False False JReal "global1" Nothing,
@@ -99,6 +100,7 @@ syntaxTests = testGroup "Syntax tests"
             GlobalVar nosrc True True (JUserDefined "widget") "global5" Nothing,
             GlobalVar nosrc True False (JUserDefined "playercolor") "global6" (Just $ FunctionCall nosrc "ConvertPlayerColor" [IntegerLiteral nosrc 0]),
             GlobalVar nosrc True False JInteger "bj_ELEVATOR_WALL_TYPE_WEST" (Just $ IntegerLiteral nosrc 4),
+            GlobalVar nosrc True False JReal "bj_PI" (Just $ RealLiteral nosrc 3.14159),
             GlobalVar nosrc False False (JUserDefined "force") "bj_FORCE_ALL_PLAYERS" (Just $ NullLiteral nosrc)
           ] [] []),
       testCase "natives" $

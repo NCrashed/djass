@@ -13,7 +13,8 @@ import Language.Jass.Parser.AST
 
 -- | Variable could be global, local and as a function parameter
 data Variable = VarGlobal GlobalVar | VarLocal LocalVar | VarParam Parameter 
-
+  deriving (Eq, Show)
+  
 -- | Returns variable name
 getVarName :: Variable -> String
 getVarName (VarGlobal (GlobalVar _ _ _ _ name _)) = name
@@ -46,6 +47,6 @@ getVarType (VarParam (Parameter _ jtype _)) = jtype
 
 -- | Returns if variable is array
 isVarArray :: Variable -> Bool
-isVarArray (VarGlobal (GlobalVar _ flag _ _ _ _)) = flag
+isVarArray (VarGlobal (GlobalVar _ _ flag _ _ _)) = flag
 isVarArray (VarLocal (LocalVar _ flag _ _ _)) = flag
 isVarArray (VarParam _) = False

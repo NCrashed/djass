@@ -43,7 +43,7 @@ inferType (IntegerLiteral _ _) = return JInteger
 inferType (StringLiteral _ _) = return JString
 inferType (RealLiteral _ _) = return JReal
 inferType (BoolLiteral _ _) = return JBoolean
-inferType (NullLiteral _) = return JHandle
+inferType (NullLiteral _) = return JNull
 
 -- | Returns variable type
 inferVariableType :: SrcPos -> Name -> JassSem s JassType
@@ -67,12 +67,31 @@ isNumericType JInteger = True
 isNumericType JReal = True
 isNumericType _ = False
 
+-- | Returns true if type is a reference
+isHandleSuccessor :: JassType -> JassSem s Bool
+isHandleSuccessor JHandle = return True
+isHandleSuccessor JString = return True
+isHandleSuccessor JCode = return True
+isHandleSuccessor JNull = return True
+isHandleSuccessor (JUserDefined name) = do
+  mtype <- getType name
+  case mtype of
+    Nothing -> return False
+    Just t -> isHandleSuccessor $ getTypeBase t
+isHandleSuccessor _ = return False
+
 -- | Returns first type that is ancestor of two types
 getGeneralType :: JassType -> JassType -> JassSem s (Maybe JassType)
 getGeneralType t1 t2
   | t1 == t2 = return $ Just t1
   | t1 == JReal && t2 == JInteger = return $ Just JReal
   | t1 == JInteger && t2 == JReal = return $ Just JReal
+  | t1 == JNull = do
+    cond <- isHandleSuccessor t2 
+    return $ if cond then Just t2 else Nothing
+  | t2 == JNull = do
+    cond <- isHandleSuccessor t1 
+    return $ if cond then Just t1 else Nothing
   | JUserDefined name1 <- t1, 
     JUserDefined name2 <- t2 = do 
       mtype1 <- getType name1
@@ -81,7 +100,13 @@ getGeneralType t1 t2
         Nothing -> throwError $ strMsg $ "Unknown type " ++ name1
         Just type1 -> case mtype2 of
           Nothing -> throwError $ strMsg $ "Unknown type " ++ name2
-          Just type2 -> getGeneralType (getTypeBase type1) (getTypeBase type2)
+          Just type2 -> let
+            base1 = getTypeBase type1
+            base2 = getTypeBase type2
+            in if 
+              | base1 == t2 -> return $ Just base1
+              | t1 == base2 -> return $ Just base2
+              | otherwise   -> getGeneralType base1 base2
   | JUserDefined name1 <- t1 = do
       mtype1 <- getType name1
       case mtype1 of

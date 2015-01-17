@@ -12,7 +12,8 @@ import Language.Jass.Parser.AST
  
 -- | Holds function or native
 data Callable = CallableNative NativeDecl | CallableFunc Function
-
+  deriving (Eq, Show)
+  
 -- | Returns function or native name
 getCallableName :: Callable -> String
 getCallableName (CallableNative (NativeDecl _ _ funcDecl)) = getFuncDeclName funcDecl

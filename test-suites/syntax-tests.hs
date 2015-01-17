@@ -1,6 +1,7 @@
 module Main where
+
 import Language.Jass.Parser.GrammarTest
---import Language.Jass.Parser.ASTTest
+import Language.Jass.Semantic.CheckTest
 
 
 import Test.Tasty
@@ -11,4 +12,7 @@ main :: IO()
 main = defaultMain tests
 
 tests :: TestTree
-tests = testGroup "Tests" [syntaxTests, commonParsing]
+tests = testGroup "Tests" [
+  testGroup "Parsing" [syntaxTests, commonParsing],
+  testGroup "Semantic checks" [commonSemanticTest]
+  ]
