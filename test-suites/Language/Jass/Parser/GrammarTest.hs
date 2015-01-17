@@ -110,7 +110,9 @@ syntaxTests = testGroup "Syntax tests"
           (JassModule nosrc [] [] [
               NativeDecl nosrc False (FunctionDecl nosrc "function1" [] Nothing),
               NativeDecl nosrc False (FunctionDecl nosrc "function2" [] (Just $ JUserDefined "widget")),
-              NativeDecl nosrc False (FunctionDecl nosrc "function3" [(JInteger, "par1"), (JCode, "par2")] (Just JHandle)),
+              NativeDecl nosrc False (FunctionDecl nosrc "function3" [
+                Parameter nosrc JInteger "par1", 
+                Parameter nosrc JCode "par2"] (Just JHandle)),
               NativeDecl nosrc True (FunctionDecl nosrc "function4" [] Nothing)
             ] []),
       testCase "simple function" $
@@ -139,14 +141,18 @@ syntaxTests = testGroup "Syntax tests"
             ("function simple takes integer par1, real par2, handle par3 returns nothing\n" ++
              "endfunction")
             (JassModule nosrc [] [] [] [
-                Function nosrc False (FunctionDecl nosrc "simple" [(JInteger, "par1"), (JReal, "par2"), (JHandle, "par3")] Nothing) [] []
+                Function nosrc False (FunctionDecl nosrc "simple" [Parameter nosrc JInteger "par1", Parameter nosrc JReal "par2", Parameter nosrc JHandle "par3"] Nothing) [] []
             ]),
       testCase "function with parameters" $
         parseTestModule
             ("function simple takes widget par1, location par2, handle par3 returns nothing\n" ++
              "endfunction")
             (JassModule nosrc [] [] [] [
-                Function nosrc False (FunctionDecl nosrc "simple" [(JUserDefined "widget", "par1"), (JUserDefined "location", "par2"), (JHandle, "par3")] Nothing) [] []
+                Function nosrc False (FunctionDecl nosrc "simple" [
+                  Parameter nosrc (JUserDefined "widget") "par1", 
+                  Parameter nosrc (JUserDefined "location") "par2", 
+                  Parameter nosrc JHandle "par3"] 
+                Nothing) [] []
             ]),
       testCase "local variable" $
         parseTestLocalVar "local integer var1" 
@@ -259,11 +265,14 @@ syntaxTests = testGroup "Syntax tests"
         ("function AngleBetweenPoints takes location locA, location locB returns real\n" ++
          "return bj_RADTODEG * Atan2(GetLocationY(locB) - GetLocationY(locA), GetLocationX(locB) - GetLocationX(locA))\n" ++
          "endfunction")
-        (Function nosrc False (FunctionDecl nosrc "AngleBetweenPoints" [(JUserDefined "location", "locA"), (JUserDefined "location", "locB")] (Just JReal)) [] [
-          ReturnStatement nosrc $ Just $ BinaryExpression nosrc Multiply (VariableReference nosrc "bj_RADTODEG")
-            (FunctionCall nosrc "Atan2" [
-              BinaryExpression nosrc Substract (FunctionCall nosrc "GetLocationY" [VariableReference nosrc "locB"]) (FunctionCall nosrc "GetLocationY" [VariableReference nosrc "locA"]),
-              BinaryExpression nosrc Substract (FunctionCall nosrc "GetLocationX" [VariableReference nosrc "locB"]) (FunctionCall nosrc "GetLocationX" [VariableReference nosrc "locA"])
-              ])
+        (Function nosrc False (FunctionDecl nosrc "AngleBetweenPoints" [
+            Parameter nosrc (JUserDefined "location") "locA", 
+            Parameter nosrc (JUserDefined "location") "locB"] 
+          (Just JReal)) [] [
+            ReturnStatement nosrc $ Just $ BinaryExpression nosrc Multiply (VariableReference nosrc "bj_RADTODEG")
+              (FunctionCall nosrc "Atan2" [
+                BinaryExpression nosrc Substract (FunctionCall nosrc "GetLocationY" [VariableReference nosrc "locB"]) (FunctionCall nosrc "GetLocationY" [VariableReference nosrc "locA"]),
+                BinaryExpression nosrc Substract (FunctionCall nosrc "GetLocationX" [VariableReference nosrc "locB"]) (FunctionCall nosrc "GetLocationX" [VariableReference nosrc "locA"])
+                ])
           ])
     ]

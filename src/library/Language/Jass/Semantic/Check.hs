@@ -1,0 +1,334 @@
+module Language.Jass.Semantic.Check(
+  checkModuleSemantic
+  ) where
+
+import Language.Jass.Parser.AST
+import Language.Jass.Semantic.Context
+import Language.Jass.Semantic.Type
+import Control.Monad.ST
+import Control.Monad.State.Strict
+import Control.Monad.Error
+import Data.Maybe (isJust, fromJust)
+import qualified Data.Foldable as F(forM_)
+
+-- | Pretty printing of source position
+showPos :: SrcPos -> String
+showPos src = locFile src ++ "( line " ++ show (locLine src) ++ ", column " ++ show (locCol src) ++ ")"
+ 
+class SemanticCheck a where
+  checkSemantic :: a -> SemanticError -> JassSem s ()
+ 
+checkModuleSemantic :: JassModule -> Either SemanticError ()
+checkModuleSemantic m = runST $ evalStateT (runErrorT $ checkSemantic m noMsg) =<< newContext
+
+instance SemanticCheck a => SemanticCheck [a] where
+  checkSemantic list err = mapM_ (`checkSemantic` err) list
+  
+instance SemanticCheck JassModule where
+  checkSemantic (JassModule _ types globals natives funcs) _ = do
+    checkSemantic types noMsg
+    checkSemantic globals noMsg
+    checkSemantic natives noMsg
+    checkSemantic funcs noMsg
+
+instance SemanticCheck JassType where
+  checkSemantic (JUserDefined name) err = do
+    t <- getType name
+    case t of
+      Nothing -> throwError err
+      _ -> return ()
+  checkSemantic _ _ = return ()
+
+instance SemanticCheck TypeDef where
+  checkSemantic (TypeDef src name jtype) _ = do
+    lookres <- getType name
+    case lookres of
+      Nothing -> checkSemantic jtype $ SemanticError src $ "Extend type " ++ show jtype ++ " is unknown"
+      Just (TypeDef src2 _ _) -> throwError $ SemanticError src $ "Type " ++ name ++ " is already defined at " ++ showPos src2      
+
+instance SemanticCheck Variable where
+  checkSemantic var _ = do
+    checkRedefinition
+    checkInitializer
+    where
+      -- | Fails if variable already exists
+      checkRedefinition = do
+        let name = getVarName var
+        let src = getVarPos var
+        mvar <- getVariable name 
+        case mvar of
+          Nothing -> return ()
+          Just var2 -> throwError $ SemanticError src $ "Variable " ++ name ++ " is already defined at " 
+            ++ showPos (getVarPos var2)
+      -- | Fails if initial value type isn't equal declared one
+      checkInitializer =  do
+        let jtype = getVarType var
+        case getVarInitializator var of
+          Nothing -> return ()
+          Just initExpr -> do
+            checkSemantic initExpr noMsg
+            exprType <- inferType initExpr
+            unless (exprType `typeSubsetOf` jtype) $
+              throwError $ SemanticError (getExpressionPos initExpr) $ "Type mismatch in variable initial value, expected " ++
+                show jtype ++ " but got " ++ show exprType
+        
+instance SemanticCheck Parameter where
+  checkSemantic p@(Parameter src jtype name) _ = do
+    checkSemantic jtype $ SemanticError src $ "Type of parameter " ++ name ++ " is unknown!"
+    checkSemantic (VarParam p) noMsg
+
+instance SemanticCheck GlobalVar where
+  checkSemantic gvar = checkSemantic $ VarGlobal gvar
+      
+instance SemanticCheck LocalVar where
+  checkSemantic lvar = checkSemantic $ VarLocal lvar
+  
+instance SemanticCheck FunctionDecl where
+  checkSemantic (FunctionDecl _ _ params Nothing) err = checkSemantic params err
+  checkSemantic (FunctionDecl _ _ params (Just retType)) err = do
+    checkSemantic params err 
+    checkSemantic retType $ updateErrorMsg err $ const $ "Return type " ++ show retType ++ " is unknown"
+
+instance SemanticCheck Callable where
+  checkSemantic callable _ = do
+    let name = getCallableName callable
+    let src = getCallablePos callable
+    lookres <- getCallable name
+    case lookres of
+      Nothing -> return ()
+      Just callable2 -> throwError $ SemanticError src $ "Function/native " ++ name ++ " is already defined at " 
+        ++ showPos (getCallablePos callable2)
+        
+instance SemanticCheck NativeDecl where
+  checkSemantic native@(NativeDecl src _ decl) _= do
+    checkSemantic (CallableNative native) noMsg
+    checkSemantic decl $ SemanticError src ""
+
+instance SemanticCheck Function where
+  checkSemantic func@(Function src isConst decl@(FunctionDecl _ _ params retType) locals stmts) _ = do
+    checkSemantic (CallableFunc func) noMsg
+    checkSemantic decl $ SemanticError src ""    
+    
+    mapM_ registerVariable $ fmap VarParam params
+    checkSemantic locals noMsg
+    checkSemantic stmts noMsg
+    
+    when isConst $ mapM_ checkConstantness stmts
+    mapM_ checkSetConstantness stmts
+    mapM_ checkNakedExitWhen stmts
+    mapM_ checkReturnType stmts
+    mapM_ removeVariable $ fmap getParamName params
+    where
+      -- | Checking that constant function uses only constant natives and functions
+      checkConstantness (CallStatement stmtSrc _ name _) = do
+        mcallable <- getCallable name
+        case mcallable of
+          Nothing -> return ()
+          Just callable -> unless (getCallableConstness callable) $
+            throwError $ SemanticError stmtSrc $ "Cannot use non constant function/native in constant function " 
+              ++ getCallableName callable ++ " at " ++ showPos src
+      checkConstantness _ = return ()
+      
+      -- | Checking that set is not setting immutable variables
+      checkSetConstantness (SetStatement stmtSrc _ name _) = checkVarConstantness name stmtSrc "variable"
+      checkSetConstantness (SetArrayStatement stmtSrc _ name _ _) = checkVarConstantness name stmtSrc "array"
+      checkSetConstantness (LoopStatement _ _ loopStmts) = mapM_ checkSetConstantness loopStmts
+      checkSetConstantness (IfThenElseStatement _ _ _ thenStmts elseClauses) = do
+        mapM_ checkSetConstantness thenStmts
+        mapM_ (mapM_ checkSetConstantness . snd) elseClauses
+      checkSetConstantness _ = return ()
+      
+      checkVarConstantness name stmtSrc msgPart = do
+        mvar <- getVariable name
+        case mvar of
+          Nothing -> return ()
+          Just var -> unless (getVarConstness var) $
+            throwError $ SemanticError stmtSrc $ "Cannot set constant " ++ msgPart ++ " " ++ getVarName var 
+              ++ " at " ++ showPos (getVarPos var)
+      
+      -- | Fails if there is exitwhen without loop
+      checkNakedExitWhen (ExitWhenStatement stmtSrc _) = throwError $ SemanticError stmtSrc "exitwhen without corresponding loop"
+      checkNakedExitWhen (IfThenElseStatement _ _ _ thenStmts elseClauses) = do
+        mapM_ checkNakedExitWhen thenStmts
+        mapM_ (mapM_ checkNakedExitWhen . snd) elseClauses
+      checkNakedExitWhen _ = return ()
+      
+      -- | Checking that return types matches, no return bug for you ;)
+      checkReturnType (ReturnStatement stmtSrc Nothing) = when (isJust retType) $ throwError $ SemanticError stmtSrc $
+        "Type mismatch in return, expected " ++ show (fromJust retType)++ ", but got nothing" 
+      checkReturnType (ReturnStatement _ (Just expr)) = do
+        checkSemantic expr noMsg
+        exprType <- inferType expr
+        unless (isJust retType) $ throwError $ SemanticError (getExpressionPos expr) $
+          "Type mismatch in return, expected nothing, but got " ++ show exprType
+        let retType' = fromJust retType
+        unless (exprType `typeSubsetOf` retType') $ throwError $ SemanticError (getExpressionPos expr) $ 
+          "Type mismatch in return, expected "++ show retType' ++", but got " ++ show exprType
+      checkReturnType (LoopStatement _ _ loopStmts) = mapM_ checkReturnType loopStmts
+      checkReturnType (IfThenElseStatement _ _ _ thenStmts elseClauses) = do
+        mapM_ checkReturnType thenStmts
+        mapM_ (mapM_ checkReturnType . snd) elseClauses
+      checkReturnType _ = return ()
+        
+instance SemanticCheck Statement where
+  checkSemantic (SetStatement src _ name expr) _ = do
+    checkVariableName src name
+    checkVariableExpr name expr
+                
+  checkSemantic (SetArrayStatement src _ name exprIndex expr) _ = do
+      checkArrayName src name
+      checkIndexExpr exprIndex
+      checkVariableExpr name expr      
+                
+  checkSemantic (IfThenElseStatement src _ cond thenStmts elseClauses) _ = do
+    checkCondition cond "if condition"
+    mapM_ (`checkSemantic` noMsg) thenStmts
+    checkMiddleElse elseClauses
+    forM_ elseClauses $ \(mcond, elseStmts) -> do
+      F.forM_ mcond (`checkCondition` "condition of if else clause")
+      mapM_ (`checkSemantic` noMsg) elseStmts
+    where
+      -- | Checks that else without condition is last and only last
+      checkMiddleElse [] = return ()
+      checkMiddleElse ((Nothing, _):_) = throwError $ SemanticError src "Else clause followed by another elseif or else isn't legal"
+      checkMiddleElse _ = return ()
+      
+  checkSemantic (CallStatement src _ name args) err = checkSemantic (FunctionCall src name args) err
+  checkSemantic (LoopStatement _ _ stmts) _ = mapM_ (`checkSemantic` noMsg) stmts
+  checkSemantic (ExitWhenStatement _ cond) _ = checkCondition cond "exitwhen"
+  checkSemantic (ReturnStatement _ _) _ = return ()
+  
+-- | Checks that condition type is boolean
+checkCondition :: Expression -> String -> JassSem s ()
+checkCondition condExpr msgPart = do
+  checkSemantic condExpr noMsg
+  condType <- inferType condExpr
+  when (condType /= JBoolean) $ throwError $ SemanticError (getExpressionPos condExpr) $ 
+    "Type mismatch for " ++ msgPart ++ ", expected " ++ show JBoolean ++ " but got " ++ show condType
+    
+-- | Checks that index expression has type of integer
+checkIndexExpr :: Expression -> JassSem s ()
+checkIndexExpr exprIndex = do
+  checkSemantic exprIndex noMsg
+  exprType <- inferType exprIndex
+  when (exprType /= JInteger) $ throwError $ SemanticError (getExpressionPos exprIndex) $ 
+    "Type mismatch for array index, expected " ++ show JInteger ++ " but got " ++ show exprType    
+
+-- | Checks that expression has valid type for variable
+checkVariableExpr :: String -> Expression -> JassSem s ()
+checkVariableExpr name expr = do
+  mvar <- getVariable name
+  case mvar of
+    Nothing -> return ()
+    Just var -> do
+      checkSemantic expr noMsg
+      exprType <- inferType expr 
+      let varType = getVarType var
+      unless (exprType `typeSubsetOf` varType) $
+        throwError $ SemanticError (getExpressionPos expr) $ "Type mismatch, expected " 
+          ++ show varType ++ " but got " ++ show exprType
+
+-- | Checks that name of plain (not array) variable exists
+checkVariableName :: SrcPos -> String -> JassSem s ()
+checkVariableName src name = do 
+  mvar <- getVariable name
+  case mvar of
+    Nothing -> throwError $ SemanticError src $ "Unknown variable " ++ name
+    Just var -> when (isVarArray var) $ throwError $ SemanticError src
+      "Expected plain variable, but got array"
+            
+-- | Checks that name of variable exists
+checkArrayName :: SrcPos -> String -> JassSem s ()
+checkArrayName src name = do 
+  mvar <- getVariable name
+  case mvar of
+    Nothing -> throwError $ SemanticError src $ "Unknown variable " ++ name
+    Just var -> unless (isVarArray var) $ throwError $ SemanticError src
+      "Expected array variable, but got plain type "
+
+-- | Checks if there is actual function name exists
+checkFunctionName :: SrcPos -> String -> JassSem s ()
+checkFunctionName src name = do
+  mfunc <- getCallable name
+  case mfunc of
+    Just _ -> return ()
+    Nothing -> throwError $ SemanticError src $ "Unknown function/native " ++ name
+    
+-- | Checks if argument count matches
+checkFunctionArgsCount :: SrcPos -> String -> Int -> JassSem s ()
+checkFunctionArgsCount src name argsCount = do
+  mfunc <- getCallable name
+  case mfunc of
+    Nothing -> return ()
+    Just callable -> let parsCount = length $ getCallableParameters callable
+                     in when (argsCount /= parsCount) $ throwError $ SemanticError src $ "Arguments count mismatch, expected "
+                      ++ show parsCount ++ ", but got " ++ show argsCount
+                      
+-- | Checks arguments types
+checkFunctionArgs :: String -> [Expression] -> JassSem s ()
+checkFunctionArgs name args = do 
+  mfunc <- getCallable name
+  case mfunc of
+    Nothing -> return ()
+    Just callable -> mapM_ checkArg $ zip3 [1..] args (getCallableParameters callable)
+  where
+    checkArg :: (Int, Expression, Parameter) -> JassSem s ()
+    checkArg (i, argExpr, parameter) = do
+      checkSemantic argExpr noMsg
+      argType <- inferType argExpr
+      let parType = getParamType parameter
+      unless (argType `typeSubsetOf` parType) $ throwError $ SemanticError (getParamPos parameter) $ 
+        "Type mismatch at function argument " ++ show i ++ ", expected " ++ show parType ++ " but got " ++ show argType
+                                                    
+instance SemanticCheck Expression where
+  checkSemantic (BinaryExpression _ op left right) _ = do
+    checkSemantic left noMsg
+    checkSemantic right noMsg
+    case op of
+      And -> left `typeEqual` JBoolean >> right `typeEqual` JBoolean
+      Or -> left `typeEqual` JBoolean >> right `typeEqual` JBoolean
+      _ -> left `typeConforms` right
+  checkSemantic (UnaryExpression _ op expr) _ = do
+    checkSemantic expr noMsg
+    case op of
+      Plus -> checkNumeric expr
+      Negation -> checkNumeric expr
+      Not -> expr `typeEqual` JBoolean
+  checkSemantic (ArrayReference src name indexExpr) _ = do
+    checkArrayName src name
+    checkSemantic indexExpr noMsg
+    indexExpr `typeEqual` JInteger
+  checkSemantic (FunctionCall src name args) _ = do
+    checkFunctionName src name
+    checkFunctionArgsCount src name $ length args
+    checkFunctionArgs name args
+  checkSemantic (FunctionReference src name) _ = checkFunctionName src name
+  checkSemantic (VariableReference src name) _ = checkVariableName src name
+  checkSemantic _ _ = return ()
+  
+-- | Checks that expression has specific type
+typeEqual :: Expression -> JassType -> JassSem s ()
+expr `typeEqual` t2 = do
+  t1 <- inferType expr
+  unless (t1 == t2) $ throwError $
+    SemanticError (getExpressionPos expr) $
+      "Type mismatch in expression, expected " ++
+        show t1 ++ ", but got " ++ show t2    
+
+-- | Checks if expression types conforms
+typeConforms :: Expression -> Expression -> JassSem s ()
+expr1 `typeConforms` expr2 = do
+  t1 <- inferType expr1
+  t2 <- inferType expr2
+  unless (t1 `conform` t2) $ throwError $
+    SemanticError (getExpressionPos expr1) $
+      "Type mismatch in expression, cannot combine " ++
+        show t1 ++ " and " ++ show t2    
+
+-- | Checks if expression is numeric type        
+checkNumeric :: Expression -> JassSem s ()
+checkNumeric expr = do
+  t1 <- inferType expr
+  unless (isNumericType t1) $ throwError $
+    SemanticError (getExpressionPos expr) $
+      "Type mismatch in expression, expected numeric type, but got " ++ show t1

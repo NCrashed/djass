@@ -10,11 +10,18 @@ module Language.Jass.Parser.AST(
     GlobalVar(..),
     LocalVar(..),
     NativeDecl(..),
+    Parameter(..),
+    getParamName,
+    getParamType,
+    getParamPos,
     FunctionDecl(..), 
+    getFuncDeclName,
+    getFuncDeclParameters,
     Function(..),
     BinaryOperator(..),
     UnaryOperator(..),
     Expression(..),
+    getExpressionPos,
     Statement(..),
     setDebugStatement
     ) where
@@ -109,19 +116,47 @@ instance ShowIndent NativeDecl where
 instance Eq NativeDecl where
   (NativeDecl _ const1 funcdec1) == (NativeDecl _ const2 funcdec2) = 
     const1 == const2 && funcdec1 == funcdec2
-    
-data FunctionDecl = FunctionDecl SrcPos Name [(JassType, Name)] (Maybe JassType)
+
+data Parameter = Parameter SrcPos JassType Name
+
+-- | Returns parameter name
+getParamName :: Parameter -> Name
+getParamName (Parameter _ _ name) = name
+
+-- | Returns parameter type
+getParamType :: Parameter -> JassType
+getParamType (Parameter _ jtype _) = jtype
+
+-- | Returns parameter source position
+getParamPos :: Parameter -> SrcPos
+getParamPos (Parameter src _ _) = src
+
+instance Show Parameter where
+  show (Parameter _ jtype name) = show jtype ++ " " ++ name
+
+instance Eq Parameter where
+  (Parameter _ jtype1 name1) == (Parameter _ jtype2 name2) = jtype1 == jtype2 && name1 == name2
+  
+data FunctionDecl = FunctionDecl SrcPos Name [Parameter] (Maybe JassType)
 
 instance Show FunctionDecl where
   show = showIndent 0
      
 instance ShowIndent FunctionDecl where
   showIndent i (FunctionDecl _ name pars rtype) = makeIndent i ++ name ++ " takes " ++ params ++ " returns " ++ maybe "nothing" show rtype
-      where params = if null pars then "nothing" else commaSep (map (\(t,a) -> show t ++ " " ++ a) pars)
+      where params = if null pars then "nothing" else commaSep (map show pars)
 
 instance Eq FunctionDecl where
   (FunctionDecl _ name1 pars1 ret1) == (FunctionDecl _ name2 pars2 ret2) =
     name1 == name2 && pars1 == pars2 && ret1 == ret2
+
+-- | Returns function declaration name, helper
+getFuncDeclName :: FunctionDecl -> String
+getFuncDeclName (FunctionDecl _ name _ _) = name
+
+-- | Returns parameters of function declaration
+getFuncDeclParameters :: FunctionDecl -> [Parameter]
+getFuncDeclParameters (FunctionDecl _ _ pars _) = pars
              
 data Function = Function SrcPos IsConstant FunctionDecl [LocalVar] [Statement]
 
@@ -221,7 +256,21 @@ instance Eq Expression where
     (BoolLiteral _ bool1) == (BoolLiteral _ bool2) = bool1 == bool2
     (NullLiteral _) == (NullLiteral _) = True
     _ == _ = False
-    
+
+-- | Returns source position of expression
+getExpressionPos :: Expression -> SrcPos
+getExpressionPos (BinaryExpression src _ _ _) = src
+getExpressionPos (UnaryExpression src _ _) = src
+getExpressionPos (ArrayReference src _ _) = src
+getExpressionPos (FunctionCall src _ _) = src
+getExpressionPos (FunctionReference src _) = src
+getExpressionPos (VariableReference src _) = src
+getExpressionPos (IntegerLiteral src _) = src
+getExpressionPos (StringLiteral src _) = src
+getExpressionPos (RealLiteral src _) = src
+getExpressionPos (BoolLiteral src _) = src
+getExpressionPos (NullLiteral src) = src    
+
 -- | Statements
 data Statement where
     SetStatement :: SrcPos -> IsDebug -> Name -> Expression -> Statement

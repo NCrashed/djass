@@ -118,8 +118,8 @@ data Trio a b c = TrioFirst a | TrioSecond b | TrioThird c
     globalVars :: [GlobalVar] = "globals" globalVar* "endglobals"
     
     -- Additional space* is a workaround around bug in peggy
-    param :: (JassType, Name) = jassType space* identifier {($1, $3)}
-    paramList :: [(JassType, Name)] = param ("," param)* {[$1] ++ $2}
+    param :: Parameter = getPos jassType space* identifier {Parameter $1 $2 $4}
+    paramList :: [Parameter] = param ("," param)* {[$1] ++ $2}
     functionDecl :: FunctionDecl = getPos identifier "takes" ("nothing" {[]} / paramList) "returns" (jassType {Just $1} / "nothing" {Nothing}) {FunctionDecl $1 $2 $3 $4}
     nativeDecl :: NativeDecl = getPos constant? "native" functionDecl {NativeDecl $1 (isJust $2) $3}
     function :: Function = getPos constant? "function" functionDecl localVarList statementList "endfunction" {Function $1 (isJust $2) $3 $4 $5}
