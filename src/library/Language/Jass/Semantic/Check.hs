@@ -11,7 +11,7 @@ import Language.Jass.Semantic.Type
 import Control.Monad.ST
 import Control.Monad.State.Strict
 import Control.Monad.Error
-import Data.Maybe (isJust, fromJust)
+import Data.Maybe (isJust, fromJust, isNothing)
 import qualified Data.Foldable as F(forM_)
 
 class SemanticCheck a where
@@ -120,7 +120,7 @@ instance SemanticCheck NativeDecl where
     registerCallable (CallableNative native)
     
 instance SemanticCheck Function where
-  checkSemantic func@(Function src isConst decl@(FunctionDecl _ _ params retType) locals stmts) _ = do
+  checkSemantic func@(Function src isConst decl@(FunctionDecl _ funcName params retType) locals stmts) _ = do
     checkSemantic (CallableFunc func) noMsg
     checkSemantic decl $ SemanticError src ""    
     
@@ -134,6 +134,8 @@ instance SemanticCheck Function where
     mapM_ checkSetConstantness stmts
     mapM_ checkNakedExitWhen stmts
     mapM_ checkReturnType stmts
+    when (isJust retType && not (checkTerminationFlow stmts)) $ throwError $ 
+      SemanticError src $ "Function " ++ funcName ++ " must be ended with return statement"
     mapM_ removeVariable $ fmap getParamName params
     mapM_ removeVariable $ fmap getLocalVarName locals
     
@@ -190,7 +192,19 @@ instance SemanticCheck Function where
         mapM_ checkReturnType thenStmts
         mapM_ (mapM_ checkReturnType . snd) elseClauses
       checkReturnType _ = return ()
-        
+
+      -- | Checking that all statement tree has returns at leaves
+      checkTerminationFlow :: [Statement] -> Bool
+      checkTerminationFlow [] = False
+      checkTerminationFlow (ReturnStatement _ _ : _) = True
+      checkTerminationFlow (LoopStatement _ _ loopStmts : xs) = checkTerminationFlow loopStmts || checkTerminationFlow xs
+      checkTerminationFlow (IfThenElseStatement _ _ _ thenStmts elseClauses : xs) = 
+        if not $ hasLastElse elseClauses then checkTerminationFlow xs
+        else all checkTerminationFlow (thenStmts : fmap snd elseClauses) || checkTerminationFlow xs
+        where hasLastElse [] = False
+              hasLastElse ys = isNothing $ fst $ last ys 
+      checkTerminationFlow (_ : xs) = checkTerminationFlow xs  
+      
 instance SemanticCheck Statement where
   checkSemantic (SetStatement src _ name expr) _ = do
     checkVariableName src name
