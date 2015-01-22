@@ -47,7 +47,14 @@ testJassFile path = do
   case res of
     Left err -> assertFailure (show err)
     Right _ -> return ()
-    
+
+testJassFile' :: FilePath -> JassModule -> Assertion
+testJassFile' path testModule = do 
+  res <- parseJassFile path
+  case res of
+    Left err -> assertFailure (show err)
+    Right module' -> module' @?= testModule
+        
 commonParsing :: TestTree
 commonParsing = testGroup "common.j and blizzard.j parsing"
   [ testCase "common.j" $ testJassFile "tests/common.j",
@@ -57,6 +64,17 @@ commonParsing = testGroup "common.j and blizzard.j parsing"
 nosrc :: SrcPos
 nosrc = SrcPos "" 0 0 0
 
+simpleParsing :: TestTree
+simpleParsing = testGroup "hello world parsing"
+  [ testCase "hello world" $ testJassFile' "hello.j" (JassModule nosrc [] [] [
+      NativeDecl nosrc False (FunctionDecl nosrc "writeln" [Parameter nosrc JString "msg"] Nothing)
+    ] [
+      Function nosrc False (FunctionDecl nosrc "main" [] Nothing) [] [
+        CallStatement nosrc False "writeln" [StringLiteral nosrc "Hello, first standalone JASS program!"]
+      ]
+    ])
+  ]
+  
 syntaxTests :: TestTree
 syntaxTests = testGroup "Syntax tests"
     [ testCase "empty module" $ parseTestModule "" (JassModule nosrc [] [] [] []),

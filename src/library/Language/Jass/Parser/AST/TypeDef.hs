@@ -1,5 +1,6 @@
 module Language.Jass.Parser.AST.TypeDef(
   TypeDef(..),
+  getTypeName,
   getTypeBase
   ) where
   
@@ -22,3 +23,7 @@ instance Eq TypeDef where
 -- | Returns type that is used as base type for specified type
 getTypeBase :: TypeDef -> JassType
 getTypeBase (TypeDef _ _ t) = t
+
+-- | Returns type name
+getTypeName :: TypeDef -> Name
+getTypeName (TypeDef _ n _) = n

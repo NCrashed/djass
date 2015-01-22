@@ -20,7 +20,9 @@ library
                    peggy >=0.3 && <0.4,
                    digits >=0.2 && <0.3,
                    hashtables >=1.0 && <1.3,
-                   mtl >=2.0 && <2.3
+                   mtl >=2.0 && <2.3,
+                   unordered-containers >=0.2 && <0.3,
+                   llvm-general-pure >=3.4 && <3.5
   ghc-options:       -Wall
   default-language:  Haskell2010
   hs-source-dirs:    src/library
@@ -31,9 +33,9 @@ library
                    Language.Jass.Parser.AST.Expression,
                    Language.Jass.Parser.AST.Statement
 
-test-suite syntax-tests
+test-suite all-tests
   type:            exitcode-stdio-1.0
-  main-is:         syntax-tests.hs
+  main-is:         all-tests.hs
   ghc-options:     -Wall -rtsopts
   build-depends:   
                   base >= 4,
@@ -41,6 +43,8 @@ test-suite syntax-tests
                   digits >=0.2 && <0.3,
                   hashtables >=1.0 && <1.3,
                   mtl >=2.0 && <2.3,
+                  unordered-containers >=0.2 && <0.3,
+                  llvm-general-pure >=3.4 && <3.5,
                   tasty > 0.10,
                   tasty-hunit,
                   HUnit,
@@ -48,14 +52,33 @@ test-suite syntax-tests
                   QuickCheck
   default-language:  Haskell2010                
   other-modules:   
+                  Language.Jass.Codegen.CodegenError,
+                  Language.Jass.Codegen.Context,
+                  Language.Jass.Codegen.Generator,
+                  Language.Jass.Codegen.GeneratorTest,
+                  Language.Jass.JassType,
                   Language.Jass.Parser.AST,
+                  Language.Jass.Parser.AST.Expression,
+                  Language.Jass.Parser.AST.Function,
+                  Language.Jass.Parser.AST.FunctionDecl,
+                  Language.Jass.Parser.AST.GlobalVar,
+                  Language.Jass.Parser.AST.JassModule,
+                  Language.Jass.Parser.AST.LocalVar,
+                  Language.Jass.Parser.AST.NativeDecl,
+                  Language.Jass.Parser.AST.Parameter,
+                  Language.Jass.Parser.AST.Statement,
+                  Language.Jass.Parser.AST.TypeDef,
                   Language.Jass.Parser.ASTTest,
                   Language.Jass.Parser.Grammar,
                   Language.Jass.Parser.GrammarTest,
-                  Language.Jass.Parser.AST.FunctionDecl,
-                  Language.Jass.Parser.AST.LocalVar,
-                  Language.Jass.Parser.AST.Expression,
-                  Language.Jass.Parser.AST.Statement
+                  Language.Jass.Semantic.Callable,
+                  Language.Jass.Semantic.Check,
+                  Language.Jass.Semantic.CheckTest,
+                  Language.Jass.Semantic.Context,
+                  Language.Jass.Semantic.SemanticError,
+                  Language.Jass.Semantic.Type,
+                  Language.Jass.Semantic.Variable,
+                  Language.Jass.ShowIndent
   hs-source-dirs:  
                   src/library,
                   test-suites

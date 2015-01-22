@@ -2,7 +2,7 @@ module Main where
 
 import Language.Jass.Parser.GrammarTest
 import Language.Jass.Semantic.CheckTest
-
+import Language.Jass.Codegen.GeneratorTest
 
 import Test.Tasty
 --import Test.Tasty.QuickCheck as QC
@@ -13,6 +13,7 @@ main = defaultMain tests
 
 tests :: TestTree
 tests = testGroup "Tests" [
-  testGroup "Parsing" [syntaxTests, commonParsing],
-  testGroup "Semantic checks" [commonSemanticTest]
+  testGroup "Parsing" [syntaxTests, simpleParsing, commonParsing],
+  testGroup "Semantic checks" [commonSemanticTest],
+  testGroup "Code generation" [simpleCodegenTest]
   ]

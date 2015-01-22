@@ -18,8 +18,8 @@ class SemanticCheck a where
   checkSemantic :: a -> SemanticError -> JassSem s ()
  
 -- | Checks one module for semantic errors
-checkModuleSemantic :: JassModule -> Either SemanticError ()
-checkModuleSemantic m = runST $ evalStateT (runErrorT $ checkSemantic m noMsg) =<< newContext
+checkModuleSemantic :: JassModule -> Either SemanticError ([TypeDef], [Callable], [Variable])
+checkModuleSemantic m = runST $ evalStateT (runErrorT $ checkSemantic m noMsg >> freezeContext) =<< newContext
 
 -- | Checks several modules for semantic errors
 checkModulesSemantic :: [JassModule] -> Either SemanticError ()

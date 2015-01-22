@@ -9,7 +9,7 @@ module Language.Jass.Semantic.Context(
   getVariable,
   registerVariable,
   removeVariable,
-  
+  freezeContext,
   module Reexports
   ) where
 
@@ -18,6 +18,7 @@ import Language.Jass.Semantic.Callable as Reexports
 import Language.Jass.Semantic.Variable as Reexports
 import Language.Jass.Semantic.SemanticError  as Reexports
 import qualified Data.HashTable.ST.Cuckoo as HT
+import qualified Data.HashTable.Class as HT(toList)
 import Control.Monad.ST
 import Control.Monad.State.Strict
 import Control.Monad.Error
@@ -27,11 +28,11 @@ type Name = String
 -- | Hash table with type declarations mapping 
 type TypeDeclarations s = HT.HashTable s Name TypeDef
 -- | Hash table with function/natives declarations mapping
-type FunctionDeclarations s = HT.HashTable s Name Callable
+type CallableDeclarations s = HT.HashTable s Name Callable
 -- | Hash table with variable declarations (including locals and function parameters)
 type VariableDeclarations s = HT.HashTable s Name Variable
 -- | Context is a symbol table
-type JassContext s = (TypeDeclarations s, FunctionDeclarations s, VariableDeclarations s)
+type JassContext s = (TypeDeclarations s, CallableDeclarations s, VariableDeclarations s)
 
 -- | Creating empty context
 newContext :: ST s (JassContext s)
@@ -86,3 +87,12 @@ removeVariable :: Name -> JassSem s ()
 removeVariable name = do
   (_, _, vars) <- get
   lift.lift $ HT.delete vars name
+
+-- | Extracts all values from context
+freezeContext :: JassSem s ([TypeDef], [Callable], [Variable])
+freezeContext = do
+  (htypes, hfuncs, hvars) <- get
+  types <- lift.lift $ HT.toList htypes
+  funcs <- lift.lift $ HT.toList hfuncs
+  vars <- lift.lift $ HT.toList hvars
+  return (fmap snd types, fmap snd funcs, fmap snd vars)
