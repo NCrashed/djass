@@ -4,7 +4,7 @@ module Language.Jass.Parser.AST.TypeDef(
   getTypeBase
   ) where
   
-import Text.Peggy (SrcPos(..))
+import Language.Jass.Parser.SourcePos
 import Language.Jass.ShowIndent
 import Language.Jass.JassType
 

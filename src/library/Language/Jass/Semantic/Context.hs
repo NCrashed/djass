@@ -21,7 +21,7 @@ import qualified Data.HashTable.ST.Cuckoo as HT
 import qualified Data.HashTable.Class as HT(toList)
 import Control.Monad.ST
 import Control.Monad.State.Strict
-import Control.Monad.Error
+import Control.Monad.Except
 
 type Name = String
 
@@ -43,7 +43,7 @@ newContext = do
   return (types, funcs, vars)
   
 -- | Helper monad to track Jass symbols
-type JassSem s = ErrorT SemanticError (StateT (JassContext s) (ST s))
+type JassSem s = ExceptT SemanticError (StateT (JassContext s) (ST s))
 
 -- | Searching type declarations in context
 getType :: Name -> JassSem s (Maybe TypeDef)

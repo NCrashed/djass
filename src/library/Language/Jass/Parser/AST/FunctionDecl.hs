@@ -5,7 +5,7 @@ module Language.Jass.Parser.AST.FunctionDecl(
   getFuncDeclReturnType
   ) where
   
-import Text.Peggy (SrcPos(..))
+import Language.Jass.Parser.SourcePos
 import Language.Jass.ShowIndent
 import Language.Jass.JassType
 import Language.Jass.Parser.AST.Parameter

@@ -4,7 +4,7 @@ module Language.Jass.Parser.AST.Statement(
   setDebugStatement
   ) where
 
-import Text.Peggy (SrcPos(..))
+import Language.Jass.Parser.SourcePos
 import Language.Jass.ShowIndent
 import Language.Jass.Parser.AST.Expression
 import Control.Arrow (second)

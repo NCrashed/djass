@@ -16,7 +16,7 @@ import Language.Jass.Codegen.CodegenError
 import Language.Jass.Parser.AST.TypeDef
 import Language.Jass.Semantic.Callable
 import Language.Jass.Semantic.Variable
-import Control.Monad.Error
+import Control.Monad.Except
 import Control.Monad.State.Strict
 import qualified LLVM.General.AST as LLVM
 import Control.Applicative
@@ -44,11 +44,11 @@ newContext types callables variables = CodegenContext {
   where
     convertToMap getter ls = zip (fmap getter ls) ls
     
-newtype Codegen a = Codegen { runCodegen_ :: ErrorT CodegenError (State CodegenContext) a }
+newtype Codegen a = Codegen { runCodegen_ :: ExceptT CodegenError (State CodegenContext) a }
   deriving (Functor, Applicative, Monad, MonadState CodegenContext )
    
 runCodegen :: CodegenContext -> Codegen a -> Either CodegenError a 
-runCodegen context codegen = evalState (runErrorT $ runCodegen_ codegen) context
+runCodegen context codegen = evalState (runExceptT $ runCodegen_ codegen) context
 
 getType :: Name -> Codegen (Maybe TypeDef)
 getType = getFromContext contextTypes

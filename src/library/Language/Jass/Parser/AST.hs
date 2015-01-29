@@ -2,8 +2,8 @@ module Language.Jass.Parser.AST(
     module ReExports
     ) where
 
-import Text.Peggy as ReExports(SrcPos(..))
 import Language.Jass.JassType as ReExports
+import Language.Jass.Parser.SourcePos as ReExports
 import Language.Jass.Parser.AST.JassModule as ReExports
 import Language.Jass.Parser.AST.TypeDef as ReExports
 import Language.Jass.Parser.AST.GlobalVar as ReExports

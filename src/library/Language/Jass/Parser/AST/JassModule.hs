@@ -2,7 +2,7 @@ module Language.Jass.Parser.AST.JassModule(
   JassModule(..)
   ) where
   
-import Text.Peggy (SrcPos(..))
+import Language.Jass.Parser.SourcePos
 import Language.Jass.ShowIndent
 import Language.Jass.Parser.AST.TypeDef
 import Language.Jass.Parser.AST.GlobalVar

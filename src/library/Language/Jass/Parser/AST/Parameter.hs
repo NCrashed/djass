@@ -5,7 +5,7 @@ module Language.Jass.Parser.AST.Parameter(
   getParamPos
   ) where
   
-import Text.Peggy (SrcPos(..))
+import Language.Jass.Parser.SourcePos
 import Language.Jass.JassType
 
 type Name = String

@@ -2,7 +2,7 @@ module Language.Jass.Parser.AST.Function(
   Function(..)
   ) where
   
-import Text.Peggy (SrcPos(..))
+import Language.Jass.Parser.SourcePos
 import Language.Jass.ShowIndent
 import Language.Jass.Parser.AST.FunctionDecl
 import Language.Jass.Parser.AST.LocalVar
