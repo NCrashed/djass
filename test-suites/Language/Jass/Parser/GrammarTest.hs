@@ -55,7 +55,7 @@ commonParsing = testGroup "common.j and blizzard.j parsing"
   ]
 
 nosrc :: SrcPos
-nosrc = SrcPos "" 0 0 0
+nosrc = SrcPos "" 0 0
 
 syntaxTests :: TestTree
 syntaxTests = testGroup "Syntax tests"
@@ -79,6 +79,8 @@ syntaxTests = testGroup "Syntax tests"
             GlobalVar nosrc True False JInteger "bj_ELEVATOR_WALL_TYPE_WEST" (Just $ IntegerLiteral nosrc 4),
             GlobalVar nosrc False False (JUserDefined "force") "bj_FORCE_ALL_PLAYERS" (Just $ NullLiteral nosrc)
           ),
+      testExpression "ConvertPlayerColor(0)"
+        (FunctionCall nosrc "ConvertPlayerColor" [IntegerLiteral nosrc 0]),
       testCase "globals" $
         parseTestModule
           ("globals\n" ++

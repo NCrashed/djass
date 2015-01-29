@@ -10,7 +10,7 @@ import Language.Jass.Semantic.Context
 import Language.Jass.Semantic.Type
 import Control.Monad.ST
 import Control.Monad.State.Strict
-import Control.Monad.Error
+import Control.Monad.Except
 import Data.Maybe (isJust, fromJust, isNothing)
 import qualified Data.Foldable as F(forM_)
 
@@ -19,11 +19,11 @@ class SemanticCheck a where
  
 -- | Checks one module for semantic errors
 checkModuleSemantic :: JassModule -> Either SemanticError ()
-checkModuleSemantic m = runST $ evalStateT (runErrorT $ checkSemantic m noMsg) =<< newContext
+checkModuleSemantic m = runST $ evalStateT (runExceptT $ checkSemantic m noMsg) =<< newContext
 
 -- | Checks several modules for semantic errors
 checkModulesSemantic :: [JassModule] -> Either SemanticError ()
-checkModulesSemantic ms = runST $ evalStateT (runErrorT $
+checkModulesSemantic ms = runST $ evalStateT (runExceptT $
   mapM_ (`checkSemantic` noMsg) ms) =<< newContext
   
 instance SemanticCheck a => SemanticCheck [a] where
@@ -54,7 +54,7 @@ instance SemanticCheck TypeDef where
     case lookres of
       Nothing -> checkSemantic jtype $ SemanticError src $ "Extend type " ++ show jtype ++ " is unknown"
       Just td2@(TypeDef src2 _ _) -> unless (td == td2) $ throwError $ SemanticError src $ 
-        "Type " ++ name ++ " is already defined at " ++ showPos src2      
+        "Type " ++ name ++ " is already defined at " ++ show src2      
     registerType td
     
 instance SemanticCheck Variable where
@@ -70,7 +70,7 @@ instance SemanticCheck Variable where
         case mvar of
           Nothing -> return ()
           Just var2 -> throwError $ SemanticError src $ "Variable " ++ name ++ " is already defined at " 
-            ++ showPos (getVarPos var2)
+            ++ show (getVarPos var2)
       -- | Fails if initial value type isn't equal declared one
       checkInitializer =  do
         let jtype = getVarType var
@@ -111,7 +111,7 @@ instance SemanticCheck Callable where
     case lookres of
       Nothing -> return ()
       Just callable2 -> let src2 = getCallablePos callable2 in unless (src2 == src) $ throwError $ SemanticError src $ 
-        "Function/native " ++ name ++ " is already defined at " ++ showPos src2
+        "Function/native " ++ name ++ " is already defined at " ++ show src2
         
 instance SemanticCheck NativeDecl where
   checkSemantic native@(NativeDecl src _ decl) _= do
@@ -148,7 +148,7 @@ instance SemanticCheck Function where
           Nothing -> return ()
           Just callable -> unless (getCallableConstness callable) $
             throwError $ SemanticError stmtSrc $ "Cannot use non constant function/native in constant function " 
-              ++ getCallableName callable ++ " at " ++ showPos src
+              ++ getCallableName callable ++ " at " ++ show src
       checkConstantness _ = return ()
       
       -- | Checking that set is not setting immutable variables
@@ -166,7 +166,7 @@ instance SemanticCheck Function where
           Nothing -> return ()
           Just var -> when (getVarConstness var) $
             throwError $ SemanticError stmtSrc $ "Cannot set constant " ++ msgPart ++ " " ++ getVarName var 
-              ++ " at " ++ showPos (getVarPos var)
+              ++ " at " ++ show (getVarPos var)
       
       -- | Fails if there is exitwhen without loop
       checkNakedExitWhen (ExitWhenStatement stmtSrc _) = throwError $ SemanticError stmtSrc "exitwhen without corresponding loop"

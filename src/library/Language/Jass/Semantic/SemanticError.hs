@@ -2,11 +2,11 @@ module Language.Jass.Semantic.SemanticError(
   -- | Error handling
   SemanticError(..),
   updateErrorMsg,
-  showPos
+  strMsg,
+  noMsg
   ) where
   
 import Language.Jass.Parser.AST
-import Control.Monad.Error
 
 -- | Semantic error holds source position and a message
 data SemanticError = SemanticError SrcPos String 
@@ -15,14 +15,14 @@ data SemanticError = SemanticError SrcPos String
 updateErrorMsg :: SemanticError -> (SrcPos -> String) -> SemanticError
 updateErrorMsg (SemanticError pos _) msgFunc = SemanticError pos $ msgFunc pos
 
--- | Pretty printing of source position
-showPos :: SrcPos -> String
-showPos src = locFile src ++ "( line " ++ show (locLine src) ++ ", column " ++ show (locCol src) ++ ")"
+-- | Creating error without source position
+strMsg :: String -> SemanticError
+strMsg = SemanticError noPos
 
-instance Error SemanticError where
-  noMsg = strMsg ""
-  strMsg = SemanticError (SrcPos "" 0 0 0)
-  
+-- | Empty error
+noMsg :: SemanticError
+noMsg = strMsg ""
+
 instance Show SemanticError where
-  show (SemanticError pos msg) = showPos pos ++ ": " ++ msg
+  show (SemanticError pos msg) = show pos ++ ": " ++ msg
     

@@ -9,7 +9,7 @@ module Language.Jass.Parser.AST.Expression(
   isRelationalOperator
   ) where
 
-import Text.Peggy (SrcPos(..))
+import Language.Jass.Parser.SourcePos
 import Language.Jass.ShowIndent
 import Data.Typeable
 

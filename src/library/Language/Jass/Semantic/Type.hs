@@ -10,7 +10,7 @@ import Language.Jass.Parser.AST
 import Language.Jass.Semantic.Callable
 import Language.Jass.Semantic.Variable
 import Language.Jass.Semantic.Context
-import Control.Monad.Error
+import Control.Monad.Except
 
 type Name = String
 
