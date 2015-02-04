@@ -34,3 +34,4 @@ instance ShowIndent JassType where
 isBasicType :: JassType -> Bool
 isBasicType (JArray _) = False
 isBasicType (JUserDefined _) = False
+isBasicType _ = True

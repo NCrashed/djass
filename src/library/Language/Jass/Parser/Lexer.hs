@@ -59,7 +59,7 @@ octal = Tok.lexeme lexer octal' <?> "octal"
   where 
     octal' = do
       _ <- char '0'
-      fromInteger `fmap` (number 8 octDigit)
+      fromInteger `fmap` number 8 octDigit
 
 number :: Integer -> Parser Char -> Parser Integer
 number base baseDigit
@@ -78,7 +78,7 @@ real = Tok.lexeme lexer real' <?> "real"
       s <- option id sign
       n <- option 0 $ Tok.decimal lexer
       _ <- char '.'
-      frac <- option 0 $ fracPart
+      frac <- option 0 fracPart
       exp' <- expPart
       return $ s (exp' (fromIntegral n + frac))
     expPart :: Parser (Double -> Double)
@@ -86,7 +86,7 @@ real = Tok.lexeme lexer real' <?> "real"
       _ <- oneOf "eE"
       es <- option id sign
       emantis <- Tok.decimal lexer
-      return (* (10.0^^(es emantis)))
+      return (* (10.0 ^^ es emantis))
     fracPart :: Parser Double
     fracPart = do
       ds <- many1 digit <?> "fraction"

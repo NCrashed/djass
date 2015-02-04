@@ -107,11 +107,11 @@ convParam (AST.Parameter _ pt pname) = do
   llvmt <- toLLVMType pt
   return $ LLVM.Parameter llvmt (Name pname) []
         
-addRuntimeDefenitions :: Codegen ()
-addRuntimeDefenitions = 
-  addDefinition $ LLVM.GlobalDefinition $ functionDefaults {
-      name = Name "malloc"
-    , parameters = ([LLVM.Parameter i32 (Name "size") []], False)
-    , returnType = ptr i8
-    , basicBlocks = []
-  }
+--addRuntimeDefenitions :: Codegen ()
+--addRuntimeDefenitions = 
+--  addDefinition $ LLVM.GlobalDefinition $ functionDefaults {
+--      name = Name "malloc"
+--    , parameters = ([LLVM.Parameter i32 (Name "size") []], False)
+--    , returnType = ptr i8
+--    , basicBlocks = []
+--  }

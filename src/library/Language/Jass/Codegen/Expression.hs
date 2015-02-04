@@ -34,31 +34,31 @@ genLLVMExpression expr@(UnaryExpression _ op val) = do
   valType <- toLLVMType =<< inferType val
   let instr = opName := genUnaryOp op resType valType valName
   return (opName, valInstr ++ [instr])
-genLLVMExpression (ArrayReference _ name indExpr) = do
+genLLVMExpression (ArrayReference _ arrName indExpr) = do
   (indName, indInstr) <- genLLVMExpression indExpr
   ptrName <- generateName
   opName <- generateName
   indType <- toLLVMType =<< inferType indExpr
-  (refType, ref) <- getReference name
+  (refType, ref) <- getReference arrName
   return (opName, indInstr ++ [
       ptrName := LLVM.GetElementPtr True ref [LocalReference indType indName] [],
       opName := LLVM.Load False (LocalReference refType opName) Nothing 0 []
     ])
-genLLVMExpression (FunctionCall _ name args) = do
+genLLVMExpression (FunctionCall _ funcName args) = do
   args' <- mapM genLLVMExpression args
   let (argNames, argInstr) = unzip args' 
-  funcType <- getFunctionReturnType name
-  argTypes <- getFunctionArgumentsTypes name
+  funcType <- ptr <$> getFunctionType funcName
+  argTypes <- getFunctionArgumentsTypes funcName
   opName <- generateName
   let argOperands = uncurry LocalReference <$> zip argTypes argNames
   return (opName, concat argInstr ++ [
-    opName := LLVM.Call False C [] (Right $ ConstantOperand $ GlobalReference funcType (Name name))
+    opName := LLVM.Call False C [] (Right $ ConstantOperand $ GlobalReference funcType (Name funcName))
       (zip argOperands (repeat [])) [] []
     ])
 genLLVMExpression (FunctionReference _ _) = throwError $ strMsg "ICE: function references aren't implemented!" --TODO: here
-genLLVMExpression (VariableReference _ name) = do
+genLLVMExpression (VariableReference _ varName) = do
   opName <- generateName
-  (_, ref) <- getReference name
+  (_, ref) <- getReference varName
   return (opName, [
     opName := LLVM.Load False ref Nothing 0 []
     ])

@@ -68,19 +68,17 @@ globalVars = do
   return vars
 
 globalVar :: JassParser GlobalVar
-globalVar = try podVarDecl <|> arrayVarDecl
+globalVar = do
+  pos <- getPosition'
+  cnst <- isConstant
+  tp <- jassType
+  try (podVarDecl pos cnst tp) <|> arrayVarDecl pos cnst tp
   where
-    podVarDecl = do
-      pos <- getPosition'
-      cnst <- isConstant
-      tp <- jassType
+    podVarDecl pos cnst tp = do
       name <- identifier
       initExpr <- optionMaybe (reservedOp "=" >> expression)
       return $ GlobalVar pos cnst False tp name initExpr
-    arrayVarDecl = do
-      pos <- getPosition'
-      cnst <- isConstant
-      tp <- jassType
+    arrayVarDecl pos cnst tp = do
       reserved "array"
       name <- identifier
       return $ GlobalVar pos cnst True tp name Nothing
@@ -163,7 +161,7 @@ expression = orExpression
     expressionLevel nextLvl ops = do
       pos <- getPosition'
       left <- nextLvl
-      right <- optionMaybe $ (,) <$> (choice $ parseBinOp <$> ops) <*> expressionLevel nextLvl ops
+      right <- optionMaybe $ (,) <$> choice (parseBinOp <$> ops) <*> expressionLevel nextLvl ops
       return $ parseBinaryExpression pos left right
       
     unaryExpression = postfixExpression <|> 
@@ -186,18 +184,16 @@ statement :: JassParser Statement
 statement = choice $ try <$> [setStatement, callStatement, ifThenElseStatement, loopStatement, 
   exitWhenStatement, returnStatement, debugStatement]
   where
-    setStatement = try setPodStatement <|> setArrayStatement
-    setPodStatement = do
+    setStatement = do
       pos <- getPosition'
       reserved "set"
       name <- identifier
+      try (setPodStatement pos name) <|> setArrayStatement pos name
+    setPodStatement pos name = do
       reserved "="
       expr <- expression
       return $ SetStatement pos False name expr
-    setArrayStatement = do
-      pos <- getPosition'
-      reserved "set"
-      name <- identifier
+    setArrayStatement pos name = do
       indExpr <- between (symbol "[") (symbol "]") expression
       reserved "="
       expr <- expression
