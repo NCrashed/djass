@@ -3,7 +3,10 @@ module Language.Jass.Codegen.GeneratorTest where
 import Language.Jass.Codegen.Generator
 import Language.Jass.Semantic.Check
 import Language.Jass.Parser.Grammar
+import LLVM.General.Module
+import LLVM.General.Context
 import LLVM.General.PrettyPrint
+import Control.Monad.Except
 
 import Test.Tasty
 --import Test.Tasty.QuickCheck as QC
@@ -22,9 +25,14 @@ checkJassFile path = do
       Left err -> assertFailure (show err)
       Right context -> case uncurry3 generateLLVM context of
         Left err -> assertFailure (show err)
-        Right llvmModule -> putStrLn $ showPretty llvmModule
+        Right llvmModule -> withContext $ \cntx -> do
+          putStrLn $ showPretty llvmModule
+          convRes <- runExceptT (withModuleFromAST cntx llvmModule moduleLLVMAssembly)
+          case convRes of 
+            Left er -> putStrLn er
+            Right asm -> putStrLn asm
           
 simpleCodegenTest :: TestTree
 simpleCodegenTest = testGroup "jass helloworld"
-  [ --testCase "hello.j" $ checkJassFile "tests/hello.j"
+  [ testCase "hello.j" $ checkJassFile "tests/hello.j"
   ]

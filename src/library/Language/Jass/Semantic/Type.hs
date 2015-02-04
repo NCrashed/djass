@@ -1,9 +1,13 @@
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Language.Jass.Semantic.Type(
   inferType,
   typeSubsetOf,
   isNumericType,
-  getGeneralType
+  getGeneralType,
+  TypeInfer(..)
   ) where
   
 import Language.Jass.Parser.AST
@@ -11,11 +15,27 @@ import Language.Jass.Semantic.Callable
 import Language.Jass.Semantic.Variable
 import Language.Jass.Semantic.Context
 import Control.Monad.Except
+import qualified Language.Jass.Codegen.Context as CG
 
 type Name = String
 
+class (Monad m, MonadError SemanticError m) => TypeInfer m where
+  findTypeDef :: String -> m (Maybe TypeDef)
+  findVariable :: String -> m (Maybe Variable)
+  findCallable :: String -> m (Maybe Callable)
+  
+instance TypeInfer (JassSem s) where
+  findTypeDef = getType
+  findVariable = getVariable
+  findCallable = getCallable
+  
+instance TypeInfer CG.Codegen where
+  findTypeDef = CG.getType
+  findVariable = CG.getVariable
+  findCallable = CG.getCallable
+  
 -- | Infers expression type
-inferType :: Expression -> JassSem s JassType
+inferType :: TypeInfer m => Expression -> m JassType
 inferType (BinaryExpression src op left right) = if
   | op == And || op == Or -> return JBoolean
   | op == Reminder -> return JInteger
@@ -31,7 +51,7 @@ inferType (BinaryExpression src op left right) = if
 inferType (UnaryExpression _ _ expr) = inferType expr 
 inferType (ArrayReference src name _) = inferVariableType src name
 inferType (FunctionCall src name _) = do
-  mfunc <- getCallable name
+  mfunc <- findCallable name
   case mfunc of
     Nothing -> throwError $ SemanticError src $ "Unknown function/native " ++ name
     Just callable -> case getCallableReturnType callable of
@@ -46,15 +66,15 @@ inferType (BoolLiteral _ _) = return JBoolean
 inferType (NullLiteral _) = return JNull
 
 -- | Returns variable type
-inferVariableType :: SrcPos -> Name -> JassSem s JassType
+inferVariableType :: TypeInfer m => SrcPos -> Name -> m JassType
 inferVariableType src name = do
-  mvar <- getVariable name
+  mvar <- findVariable name
   case mvar of
     Nothing -> throwError $ SemanticError src $ "Unknown variable " ++ name
     Just var -> return $ getVarType var
     
 -- | Is b type is more general than a type
-typeSubsetOf :: JassType -> JassType -> JassSem s Bool
+typeSubsetOf :: TypeInfer m => JassType -> JassType -> m Bool
 a `typeSubsetOf` b = do
   mgt <- getGeneralType a b
   case mgt of
@@ -68,20 +88,20 @@ isNumericType JReal = True
 isNumericType _ = False
 
 -- | Returns true if type is a reference
-isHandleSuccessor :: JassType -> JassSem s Bool
+isHandleSuccessor :: TypeInfer m => JassType -> m Bool
 isHandleSuccessor JHandle = return True
 isHandleSuccessor JString = return True
 isHandleSuccessor JCode = return True
 isHandleSuccessor JNull = return True
 isHandleSuccessor (JUserDefined name) = do
-  mtype <- getType name
+  mtype <- findTypeDef name
   case mtype of
     Nothing -> return False
     Just t -> isHandleSuccessor $ getTypeBase t
 isHandleSuccessor _ = return False
 
 -- | Returns first type that is ancestor of two types
-getGeneralType :: JassType -> JassType -> JassSem s (Maybe JassType)
+getGeneralType :: TypeInfer m => JassType -> JassType -> m (Maybe JassType)
 getGeneralType t1 t2
   | t1 == t2 = return $ Just t1
   | t1 == JReal && t2 == JInteger = return $ Just JReal
@@ -94,8 +114,8 @@ getGeneralType t1 t2
     return $ if cond then Just t1 else Nothing
   | JUserDefined name1 <- t1, 
     JUserDefined name2 <- t2 = do 
-      mtype1 <- getType name1
-      mtype2 <- getType name2
+      mtype1 <- findTypeDef name1
+      mtype2 <- findTypeDef name2
       case mtype1 of
         Nothing -> throwError $ strMsg $ "Unknown type " ++ name1
         Just type1 -> case mtype2 of
@@ -108,12 +128,12 @@ getGeneralType t1 t2
               | t1 == base2 -> return $ Just base2
               | otherwise   -> getGeneralType base1 base2
   | JUserDefined name1 <- t1 = do
-      mtype1 <- getType name1
+      mtype1 <- findTypeDef name1
       case mtype1 of
         Nothing -> throwError $ strMsg $ "Unknown type " ++ name1
         Just type1 -> getGeneralType (getTypeBase type1) t2
   | JUserDefined name2 <- t2 = do
-      mtype2 <- getType name2
+      mtype2 <- findTypeDef name2
       case mtype2 of
         Nothing -> throwError $ strMsg $ "Unknown type " ++ name2
         Just type2 -> getGeneralType t1 (getTypeBase type2) 

@@ -16,7 +16,8 @@ before_install:
  - cabal --version
  - echo "$(ghc --version) [$(ghc --print-project-git-commit-id 2> /dev/null || echo '?')]"
  - travis_retry cabal update
- 
+ - travis_retry sudo apt-get install llvm-3.4 llvm-3.4-dev clang-3.4
+
 install:
  - cabal sandbox init
  - export PATH=$PATH:/home/travis/build/NCrashed/hjass/.cabal-sandbox/bin

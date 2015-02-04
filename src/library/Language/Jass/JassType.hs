@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 module Language.Jass.JassType(
-  JassType(..)
+  JassType(..),
+  isBasicType
   ) where
 
 import Language.Jass.ShowIndent
@@ -28,3 +29,8 @@ instance ShowIndent JassType where
   showIndent i (JArray jtype) = makeIndent i ++ "array " ++ show jtype
   showIndent i (JUserDefined name) = makeIndent i ++ name
   showIndent i JNull = makeIndent i ++ "null"
+  
+-- | Checks if jass type is basic (not array and custom)
+isBasicType :: JassType -> Bool
+isBasicType (JArray _) = False
+isBasicType (JUserDefined _) = False

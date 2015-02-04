@@ -6,7 +6,8 @@ module Language.Jass.Semantic.Variable(
   getVarConstness,
   getVarInitializator,
   getVarType,
-  isVarArray
+  isVarArray,
+  isGlobalVariable
   ) where
 
 import Language.Jass.Parser.AST
@@ -50,3 +51,8 @@ isVarArray :: Variable -> Bool
 isVarArray (VarGlobal (GlobalVar _ _ flag _ _ _)) = flag
 isVarArray (VarLocal (LocalVar _ flag _ _ _)) = flag
 isVarArray (VarParam _) = False
+
+-- | Returns True if variable is global
+isGlobalVariable :: Variable -> Bool
+isGlobalVariable (VarGlobal _) = True
+isGlobalVariable _ = False
