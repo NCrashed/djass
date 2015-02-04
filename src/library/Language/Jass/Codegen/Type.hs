@@ -4,6 +4,7 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Language.Jass.Codegen.Type(
     toLLVMType
+  , toLLVMType'
   , defaultValue
   , getRootType
   , jassArray

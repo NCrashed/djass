@@ -5,7 +5,8 @@ module Language.Jass.Semantic.Callable(
   getCallablePos,
   getCallableConstness,
   getCallableParameters,
-  getCallableReturnType
+  getCallableReturnType,
+  isNativeFunction
   ) where
 
 import Language.Jass.Parser.AST
@@ -38,4 +39,8 @@ getCallableParameters (CallableFunc (Function _ _ decl _ _)) = getFuncDeclParame
 getCallableReturnType :: Callable -> Maybe JassType
 getCallableReturnType (CallableNative (NativeDecl _ _ decl)) = getFuncDeclReturnType decl
 getCallableReturnType (CallableFunc (Function _ _ decl _ _)) = getFuncDeclReturnType decl
-  
+
+-- | Returns true for stored natives
+isNativeFunction :: Callable -> Bool
+isNativeFunction (CallableNative _) = True
+isNativeFunction _ = False

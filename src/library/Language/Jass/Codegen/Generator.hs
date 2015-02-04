@@ -1,11 +1,13 @@
 module Language.Jass.Codegen.Generator(
-  generateLLVM
+  generateLLVM,
+  NativesMapping
   ) where
   
 import Language.Jass.Codegen.Context
 import Language.Jass.Codegen.Type
 import Language.Jass.Codegen.Statement
 import Language.Jass.Codegen.Expression
+import Language.Jass.Codegen.Native
 import Language.Jass.Parser.AST as AST
 import Language.Jass.Semantic.Callable
 import Language.Jass.Semantic.Variable
@@ -16,13 +18,15 @@ import Control.Monad
 import Control.Monad.Error
 import Control.Applicative
 
-generateLLVM :: [TypeDef] -> [Callable] -> [Variable] -> Either SemanticError Module
+generateLLVM :: [TypeDef] -> [Callable] -> [Variable] -> Either SemanticError (NativesMapping, Module)
 generateLLVM types callables variables = runCodegen context $ do
   --addRuntimeDefenitions
   --mapM_ (addDefinition <=< genLLVM) $ reverse types
   mapM_ genLLVM $ reverse callables
   --mapM_ (addDefinition <=< genLLVM) $ reverse variables
-  getModule
+  mapping <- getNativesMapping
+  module' <- getModule
+  return (mapping, module')
   where context = newContext types callables variables
   
 class LLVMDefinition a where
@@ -38,7 +42,7 @@ instance LLVMDefinition Variable where
   
 instance LLVMDefinition Callable where
   genLLVM (CallableNative (NativeDecl _ _ (FunctionDecl _ fname pars retType))) =
-    addDefinition =<< GlobalDefinition <$> genFunctionHeader fname pars retType
+    generateNativeSupport fname pars retType
   genLLVM (CallableFunc (AST.Function _ _ (FunctionDecl _ fname pars retType) locals stmts)) = do
     -- Init context for new function
     purgeLocalVars

@@ -29,7 +29,11 @@ module Language.Jass.Codegen.Context(
   -- | Loop utilities
   saveLoopReturn,
   getLoopReturn,
-  
+  -- | Natives mapping
+  NativesMapping,
+  addNativeMapping,
+  getNativesMapping,
+  isDefinedNative,
   module SemError
   ) where
   
@@ -50,6 +54,7 @@ type Name = String
 type TypeDeclarations = HashMap Name TypeDef
 type CallableDeclarations = HashMap Name Callable
 type VariableDeclarations = HashMap Name Variable
+type NativesMapping = HashMap Name LLVM.Name 
 
 data CodegenContext = CodegenContext {
   contextTypes :: TypeDeclarations,
@@ -61,7 +66,8 @@ data CodegenContext = CodegenContext {
   globalNameCounter :: Word,
   contextSavedBlocks :: [LLVM.BasicBlock],
   contextLoopReturn :: Maybe LLVM.Name,
-  contextCurrentFunction :: String
+  contextCurrentFunction :: String,
+  nativesMapping :: NativesMapping
 }
 
 newContext :: [TypeDef] -> [Callable] -> [Variable] -> CodegenContext
@@ -75,7 +81,8 @@ newContext types callables variables = CodegenContext {
     globalNameCounter = 0,
     contextSavedBlocks = [],
     contextLoopReturn = Nothing,
-    contextCurrentFunction = ""
+    contextCurrentFunction = "",
+    nativesMapping = HM.empty
   } 
   where
     convertToMap getter ls = zip (fmap getter ls) ls
@@ -103,7 +110,14 @@ getFromContext :: (CodegenContext -> HashMap Name v) -> Name -> Codegen (Maybe v
 getFromContext getter key = do
   types <- fmap getter get 
   return $ HM.lookup key types
-  
+
+isDefinedNative :: Name -> Codegen Bool
+isDefinedNative name = do
+  mc <- getCallable name
+  case mc of 
+    Nothing -> return False
+    Just callable -> return $ isNativeFunction callable
+    
 addDefinition :: LLVM.Definition -> Codegen ()
 addDefinition def = do
   llvmModule <- getModule
@@ -212,3 +226,14 @@ setCurrentFunction :: String -> Codegen ()
 setCurrentFunction name = do
   context <- get
   put $ context { contextCurrentFunction = name }
+  
+addNativeMapping :: String -> LLVM.Name -> Codegen ()
+addNativeMapping exportName setterName = do
+  context <- get
+  let mapping = nativesMapping context
+  case exportName `HM.lookup` mapping of
+    Just _ -> throwError $ strMsg $ "ICE: tried to redefine native mapping " ++ exportName
+    Nothing -> put context { nativesMapping = HM.insert exportName setterName mapping }
+
+getNativesMapping :: Codegen NativesMapping
+getNativesMapping = fmap nativesMapping get

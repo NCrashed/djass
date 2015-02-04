@@ -51,10 +51,17 @@ genLLVMExpression (FunctionCall _ funcName args) = do
   argTypes <- getFunctionArgumentsTypes funcName
   opName <- generateName
   let argOperands = uncurry LocalReference <$> zip argTypes argNames
-  return (opName, concat argInstr ++ [
-    opName := LLVM.Call False C [] (Right $ ConstantOperand $ GlobalReference funcType (Name funcName))
-      (zip argOperands (repeat [])) [] []
-    ])
+  isNative <- isDefinedNative funcName
+  callInstr <- if not isNative then 
+                return [Do $ Call False C [] 
+                       (Right $ ConstantOperand $ GlobalReference funcType (Name funcName)) 
+                       (zip argOperands (repeat [])) [] []]
+               else do
+                tempName <- generateName
+                return [
+                  tempName := Load False (ConstantOperand $ GlobalReference (ptr funcType) (Name funcName)) Nothing 0 [],
+                  Do $ Call False C [] (Right $ LocalReference funcType tempName) (zip argOperands (repeat [])) [] []]
+  return (opName, concat argInstr ++ callInstr)
 genLLVMExpression (FunctionReference _ _) = throwError $ strMsg "ICE: function references aren't implemented!" --TODO: here
 genLLVMExpression (VariableReference _ varName) = do
   opName <- generateName
