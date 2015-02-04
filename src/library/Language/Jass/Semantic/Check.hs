@@ -10,7 +10,7 @@ import Language.Jass.Semantic.Context
 import Language.Jass.Semantic.Type
 import Control.Monad.ST
 import Control.Monad.State.Strict
-import Control.Monad.Except
+import Control.Monad.Error
 import Data.Maybe (isJust, fromJust, isNothing)
 import qualified Data.Foldable as F(forM_)
 
@@ -19,11 +19,11 @@ class SemanticCheck a where
  
 -- | Checks one module for semantic errors
 checkModuleSemantic :: JassModule -> Either SemanticError ([TypeDef], [Callable], [Variable])
-checkModuleSemantic m = runST $ evalStateT (runExceptT $ checkSemantic m noMsg >> freezeContext) =<< newContext
+checkModuleSemantic m = runST $ evalStateT (runErrorT $ checkSemantic m noMsg >> freezeContext) =<< newContext
 
 -- | Checks several modules for semantic errors
 checkModulesSemantic :: [JassModule] -> Either SemanticError ()
-checkModulesSemantic ms = runST $ evalStateT (runExceptT $
+checkModulesSemantic ms = runST $ evalStateT (runErrorT $
   mapM_ (`checkSemantic` noMsg) ms) =<< newContext
   
 instance SemanticCheck a => SemanticCheck [a] where

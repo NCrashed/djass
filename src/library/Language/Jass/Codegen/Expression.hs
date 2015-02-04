@@ -13,7 +13,7 @@ import LLVM.General.AST.Constant as Const
 import LLVM.General.AST.Float as Const
 import LLVM.General.AST.Type
 import Control.Applicative
-import Control.Monad.Except
+import Control.Monad.Error
 import Data.Char
 
 -- | Generates instruction to calculate 

@@ -13,7 +13,7 @@ import LLVM.General.AST as LLVM
 import LLVM.General.AST.Global
 import LLVM.General.AST.Type
 import Control.Monad
-import Control.Monad.Except
+import Control.Monad.Error
 import Control.Applicative
 
 generateLLVM :: [TypeDef] -> [Callable] -> [Variable] -> Either SemanticError Module

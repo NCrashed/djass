@@ -6,7 +6,7 @@ import Language.Jass.Parser.AST
 import Language.Jass.Codegen.Context
 import Language.Jass.Codegen.Expression
 import Language.Jass.Codegen.Type
-import Control.Monad.Except
+import Control.Monad.Error
 import Control.Applicative
 import LLVM.General.AST as LLVM
 import LLVM.General.AST.CallingConvention as LLVM

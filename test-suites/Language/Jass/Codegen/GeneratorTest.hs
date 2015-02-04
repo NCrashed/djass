@@ -1,36 +1,38 @@
 module Language.Jass.Codegen.GeneratorTest where
 
-import Language.Jass.Codegen.Generator
-import Language.Jass.Semantic.Check
-import Language.Jass.Parser.Grammar
+import Language.Jass.JIT.Module
 import LLVM.General.Module
 import LLVM.General.Context
-import LLVM.General.PrettyPrint
-import Control.Monad.Except
 
 import Test.Tasty
 --import Test.Tasty.QuickCheck as QC
 import Test.Tasty.HUnit
 
-{-# INLINE uncurry3 #-}
-uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
-uncurry3 f ~(a,b,c) = f a b c
+import Control.Monad.Trans.Except
 
+import Foreign.C.String
+
+nativeWriteln :: CString -> IO ()
+nativeWriteln adr = putStrLn =<< peekCString adr
+
+foreign export ccall "writeln" nativeWriteln :: CString -> IO ()
+
+  
 checkJassFile :: FilePath -> Assertion
-checkJassFile path = do 
-  res <- parseJassFile path
+checkJassFile path = withContext $ \cntx -> do 
+  res <- runExceptT $ loadJassModuleFromFile path
   case res of
-    Left err -> assertFailure (show err)
-    Right tree -> case checkModuleSemantic tree of
-      Left err -> assertFailure (show err)
-      Right context -> case uncurry3 generateLLVM context of
-        Left err -> assertFailure (show err)
-        Right llvmModule -> withContext $ \cntx -> do
-          putStrLn $ showPretty llvmModule
-          convRes <- runExceptT (withModuleFromAST cntx llvmModule moduleLLVMAssembly)
-          case convRes of 
-            Left er -> putStrLn er
-            Right asm -> putStrLn asm
+    Left err -> assertFailure err
+    Right astModule -> do
+      res2 <- runExceptT $ withModuleFromAST cntx astModule $ \llvmModule -> do
+        optimizeModule llvmModule
+        source <- moduleLLVMAssembly llvmModule
+        executeMain cntx llvmModule
+        return source
+      case res2 of
+        Left err -> assertFailure err
+        Right r -> putStrLn r
+ 
           
 simpleCodegenTest :: TestTree
 simpleCodegenTest = testGroup "jass helloworld"

@@ -26,7 +26,7 @@ import LLVM.General.AST.Type
 import LLVM.General.AST.Constant as LLVM
 import LLVM.General.AST.Float
 import Control.Applicative
-import Control.Monad.Except
+import Control.Monad.Error
 import Language.Jass.Semantic.Callable
 import Language.Jass.Semantic.Variable
   
