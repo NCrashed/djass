@@ -169,7 +169,7 @@ callFunc :: ExecutableModule JIT -> String -> (FunPtr () -> ExceptT String IO a)
 callFunc exModule funcName action = do
   mptr <- liftIO $ getFunction exModule (Name funcName)
   case mptr of
-    Nothing -> throwE "Cannot find main in jass module!"
+    Nothing -> throwE $ "Cannot find "++ funcName ++" function in jass module!"
     Just ptr -> action ptr
     
 type NativeBinder = FunPtr () -> IO ()

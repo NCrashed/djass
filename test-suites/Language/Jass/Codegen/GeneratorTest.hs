@@ -52,25 +52,43 @@ checkHello cntx llvmModule = do
 type SummFunc = CInt -> CInt -> IO CInt
 foreign import ccall "dynamic"
   mkSummFunc :: FunPtr SummFunc -> SummFunc
+  
 type SubsFunc = CInt -> CInt -> IO CInt
 foreign import ccall "dynamic"
   mkSubsFunc :: FunPtr SubsFunc -> SubsFunc
+  
 type SquareFunc = CInt -> IO CInt
 foreign import ccall "dynamic"
   mkSquareFunc :: FunPtr SquareFunc -> SquareFunc
-      
+
+type IncFunc = CInt -> IO CInt
+foreign import ccall "dynamic"
+  mkIncFunc :: FunPtr IncFunc -> IncFunc
+
+type IncFloatFunc = CFloat -> IO CFloat
+foreign import ccall "dynamic"
+  mkIncFloatFunc :: FunPtr IncFloatFunc -> IncFloatFunc
+         
 checkMath :: Context -> UnlinkedModule -> ExceptT String IO ()
 checkMath cntx llvmModule = do
   summ1 <- executeJass2 cntx [] llvmModule "summ" mkSummFunc 1 1
   liftIO $ summ1 @?= 2 
   summ2 <- executeJass2 cntx [] llvmModule "summ" mkSubsFunc 42 2
   liftIO $ summ2 @?= 44
+  
   subs1 <- executeJass2 cntx [] llvmModule "subs" mkSubsFunc 42 2
   liftIO $ subs1 @?= 40
   subs2 <- executeJass2 cntx [] llvmModule "subs" mkSubsFunc 0 2
   liftIO $ subs2 @?= -2
+  
   square1 <- executeJass1 cntx [] llvmModule "square" mkSquareFunc 2
   liftIO $ square1 @?= 4
+  
+  inc1 <- executeJass1 cntx [] llvmModule "inc" mkIncFunc 1
+  liftIO $ inc1 @?= 2
+  
+  incf1 <- executeJass1 cntx [] llvmModule "incf" mkIncFloatFunc 1
+  liftIO $ incf1 @?= 2.0
   
 simpleCodegenTest :: TestTree
 simpleCodegenTest = testGroup "jass helloworld"

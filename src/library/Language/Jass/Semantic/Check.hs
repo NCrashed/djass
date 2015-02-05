@@ -377,27 +377,40 @@ checkNumeric expr = do
 
 -- | Performs type checking for expression arithmetic operators    
 typeCheckArithmetic :: BinaryOperator -> Expression -> Expression -> JassSem s ()
-typeCheckArithmetic Summ expr1 = 
-  typeCheckBinaryExpression (arithmeticAssertion Summ (getExpressionPos expr1) [JInteger, JReal, JString]) Summ expr1
-typeCheckArithmetic op expr1 = 
-  typeCheckBinaryExpression (arithmeticAssertion op (getExpressionPos expr1) [JInteger, JReal]) op expr1
-
-arithmeticAssertion :: BinaryOperator -> SrcPos -> [JassType] -> JassType -> JassType -> JassType -> JassSem s ()
-arithmeticAssertion op src types gt t1 t2 = unless (gt `elem` types) $ throwError $ 
-  SemanticError src $ "Type mismatch, cannot use " ++ show t1 ++ " and " ++ show t2 ++ " in " ++ show op
+typeCheckArithmetic Summ expr1 expr2 = binaryTypecheckErrorWrapper expr1 expr2 Summ $ do
+  res1 <- typeCheckBinaryExpression (oneOfAssertion [JString]) expr1 expr2
+  res2 <- typeCheckBinaryExpression (oneOfAssertion [JInteger, JReal]) expr1 expr2
+  return (res1 || res2)
+typeCheckArithmetic op expr1 expr2= binaryTypecheckErrorWrapper expr1 expr2 op $
+  typeCheckBinaryExpression (oneOfAssertion [JInteger, JReal]) expr1 expr2
 
 -- | Performs type checking for relational operators (==, !=, >, <, >=, <=)      
 typeCheckRelational :: BinaryOperator -> Expression -> Expression -> JassSem s ()
-typeCheckRelational = typeCheckBinaryExpression (const.const.const $ return ())
+typeCheckRelational op expr1 expr2 = binaryTypecheckErrorWrapper expr1 expr2 op $ do
+  res1 <- typeCheckBinaryExpression (oneOfAssertion [JInteger, JReal]) expr1 expr2
+  res2 <- typeCheckBinaryExpression (const.const.const $ True) expr1 expr2
+  return (res1 || res2)
+
+-- | Returns true if general type within specified set
+oneOfAssertion :: [JassType] -> JassType -> JassType -> JassType -> Bool
+oneOfAssertion types gt _ _ = gt `elem` types
 
 -- | Type checking binary operator, first assertion takes general type of left and right expressions
-typeCheckBinaryExpression :: (JassType -> JassType -> JassType -> JassSem s ()) 
-  -> BinaryOperator -> Expression -> Expression -> JassSem s ()
-typeCheckBinaryExpression assertion op expr1 expr2 = do
+typeCheckBinaryExpression :: (JassType -> JassType -> JassType -> Bool) 
+  -> Expression -> Expression -> JassSem s Bool
+typeCheckBinaryExpression assertion expr1 expr2 = do
   t1 <- inferType expr1
   t2 <- inferType expr2
   mgt <- getGeneralType t1 t2
   case mgt of
-    Nothing -> throwError $ SemanticError (getExpressionPos expr1) $ 
-      "Type mismatch, cannot use " ++ show t1 ++ " and " ++ show t2 ++ " in " ++ show op
-    Just gt -> assertion gt t1 t2
+    Nothing -> return False
+    Just gt -> return $ assertion gt t1 t2
+
+-- | Wraps error message if assertions are equal to false
+binaryTypecheckErrorWrapper :: Expression -> Expression -> BinaryOperator -> JassSem s Bool -> JassSem s ()
+binaryTypecheckErrorWrapper expr1 expr2 op checker = do
+  res <- checker
+  unless res $ do
+    t1 <- inferType expr1
+    t2 <- inferType expr2  
+    throwError $ SemanticError (getExpressionPos expr1) $ "Type mismatch, cannot use " ++ show t1 ++ " and " ++ show t2 ++ " in " ++ show op

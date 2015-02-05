@@ -19,21 +19,26 @@ import Data.Char
 -- | Generates instruction to calculate 
 genLLVMExpression :: Expression -> Codegen (Name, [Named Instruction])
 genLLVMExpression expr@(BinaryExpression _ op left right) = do
-  (leftName, leftInstr) <- genLLVMExpression left
-  (rightName, rightInstr) <- genLLVMExpression right
+  (leftNameRaw, leftInstr) <- genLLVMExpression left
+  (rightNameRaw, rightInstr) <- genLLVMExpression right
   opName <- generateName
-  resType <- toLLVMType =<< inferType expr
-  leftType <- toLLVMType =<< inferType left
-  rightType <- toLLVMType =<< inferType right
-  let instr = opName := genBinaryOp op resType leftType leftName rightType rightName
-  return (opName, leftInstr ++ rightInstr ++ [instr])
+  leftJassType <- inferType left
+  rightJassType <- inferType right
+  resJassType <- inferType expr
+  (leftName, leftConvInstr) <- genConvertion leftJassType resJassType leftNameRaw
+  (rightName, rightConvInstr) <- genConvertion rightJassType resJassType rightNameRaw
+  resType <- toLLVMType resJassType
+  let instr = opName := genBinaryOp op resType leftName rightName
+  return (opName, leftInstr ++ leftConvInstr ++ rightInstr ++ rightConvInstr ++ [instr])
 genLLVMExpression expr@(UnaryExpression _ op val) = do
-  (valName, valInstr) <- genLLVMExpression val
+  (valNameRaw, valInstr) <- genLLVMExpression val
+  resJassType <- inferType expr
+  valJassType <- inferType val
+  (valName, valConvInstr) <- genConvertion valJassType resJassType valNameRaw
   opName <- generateName
-  resType <- toLLVMType =<< inferType expr
-  valType <- toLLVMType =<< inferType val
-  let instr = opName := genUnaryOp op resType valType valName
-  return (opName, valInstr ++ [instr])
+  resType <- toLLVMType resJassType
+  let instr = opName := genUnaryOp op resType valName
+  return (opName, valInstr ++ valConvInstr ++ [instr])
 genLLVMExpression (ArrayReference _ arrName indExpr) = do
   (indName, indInstr) <- genLLVMExpression indExpr
   ptrName <- generateName
@@ -93,39 +98,39 @@ genLLVMExpression (StringLiteral _ val) = do
               [zero, zero] []
     ])
 
-genBinaryOp :: BinaryOperator -> Type -> Type -> Name -> Type -> Name -> Instruction
-genBinaryOp AST.And _ tl left tr right = LLVM.And (LocalReference tl left) (LocalReference tr right) []
-genBinaryOp AST.Or _ tl left tr right = LLVM.Or (LocalReference tl left) (LocalReference tr right) []
-genBinaryOp AST.Equal _ tl left tr right = LLVM.ICmp LLVM.EQ (LocalReference tl left) (LocalReference tr right) []
-genBinaryOp AST.NotEqual _ tl left tr right = LLVM.ICmp LLVM.NE (LocalReference tl left) (LocalReference tr right) []
-genBinaryOp AST.GreaterEqual _ tl left tr right = LLVM.ICmp LLVM.UGE (LocalReference tl left) (LocalReference tr right) []
-genBinaryOp AST.LessEqual _ tl left tr right = LLVM.ICmp LLVM.ULE (LocalReference tl left) (LocalReference tr right) []
-genBinaryOp AST.Greater _ tl left tr right = LLVM.ICmp LLVM.UGT (LocalReference tl left) (LocalReference tr right) []
-genBinaryOp AST.Less _ tl left tr right = LLVM.ICmp LLVM.ULT (LocalReference tl left) (LocalReference tr right) []
-genBinaryOp AST.Summ rest tl left tr right 
-  | isIntegralType rest = LLVM.Add False False (LocalReference tl left) (LocalReference tr right) []
-  | otherwise = LLVM.FAdd fastMathflags (LocalReference tl left) (LocalReference tr right) []
-genBinaryOp AST.Substract rest tl left tr right 
-  | isIntegralType rest = LLVM.Sub False False (LocalReference tl left) (LocalReference tr right) []
-  | otherwise = LLVM.FSub fastMathflags (LocalReference tl left) (LocalReference tr right) []
-genBinaryOp AST.Multiply rest tl left tr right 
-  | isIntegralType rest = LLVM.Mul False False (LocalReference tl left) (LocalReference tr right) []
-  | otherwise = LLVM.FMul fastMathflags (LocalReference tl left) (LocalReference tr right) []
-genBinaryOp AST.Divide rest tl left tr right 
-  | isIntegralType rest = LLVM.SDiv False (LocalReference tl left) (LocalReference tr right) []
-  | otherwise = LLVM.FDiv fastMathflags (LocalReference tl left) (LocalReference tr right) []
-genBinaryOp AST.Reminder rest tl left tr right 
-  | isIntegralType rest = LLVM.SRem (LocalReference tl left) (LocalReference tr right) []
-  | otherwise = LLVM.FRem fastMathflags (LocalReference tl left) (LocalReference tr right) []
+genBinaryOp :: BinaryOperator -> Type -> Name -> Name -> Instruction
+genBinaryOp AST.And res left right = LLVM.And (LocalReference res left) (LocalReference res right) []
+genBinaryOp AST.Or res left right = LLVM.Or (LocalReference res left) (LocalReference res right) []
+genBinaryOp AST.Equal res left right = LLVM.ICmp LLVM.EQ (LocalReference res left) (LocalReference res right) []
+genBinaryOp AST.NotEqual res left right = LLVM.ICmp LLVM.NE (LocalReference res left) (LocalReference res right) []
+genBinaryOp AST.GreaterEqual res left right = LLVM.ICmp LLVM.UGE (LocalReference res left) (LocalReference res right) []
+genBinaryOp AST.LessEqual res left right = LLVM.ICmp LLVM.ULE (LocalReference res left) (LocalReference res right) []
+genBinaryOp AST.Greater res left right = LLVM.ICmp LLVM.UGT (LocalReference res left) (LocalReference res right) []
+genBinaryOp AST.Less res left right = LLVM.ICmp LLVM.ULT (LocalReference res left) (LocalReference res right) []
+genBinaryOp AST.Summ rest left right 
+  | isIntegralType rest = LLVM.Add False False (LocalReference rest left) (LocalReference rest right) []
+  | otherwise = LLVM.FAdd fastMathflags (LocalReference rest left) (LocalReference rest right) []
+genBinaryOp AST.Substract rest left right 
+  | isIntegralType rest = LLVM.Sub False False (LocalReference rest left) (LocalReference rest right) []
+  | otherwise = LLVM.FSub fastMathflags (LocalReference rest left) (LocalReference rest right) []
+genBinaryOp AST.Multiply rest left right 
+  | isIntegralType rest = LLVM.Mul False False (LocalReference rest left) (LocalReference rest right) []
+  | otherwise = LLVM.FMul fastMathflags (LocalReference rest left) (LocalReference rest right) []
+genBinaryOp AST.Divide rest left right
+  | isIntegralType rest = LLVM.SDiv False (LocalReference rest left) (LocalReference rest right) []
+  | otherwise = LLVM.FDiv fastMathflags (LocalReference rest left) (LocalReference rest right) []
+genBinaryOp AST.Reminder rest left right
+  | isIntegralType rest = LLVM.SRem (LocalReference rest left) (LocalReference rest right) []
+  | otherwise = LLVM.FRem fastMathflags (LocalReference rest left) (LocalReference rest right) []
 
-genUnaryOp :: UnaryOperator -> Type -> Type -> Name -> Instruction
-genUnaryOp AST.Plus rest t val
-  | isIntegralType rest = LLVM.Mul False False (ConstantOperand $ Const.Int 32 1) (LocalReference t val) []
-  | otherwise = LLVM.FMul fastMathflags (ConstantOperand $ Const.Float $ Single 1.0) (LocalReference t val) []
-genUnaryOp AST.Negation rest t val
-  | isIntegralType rest = LLVM.Mul False False (ConstantOperand $ Const.Int 32 (-1)) (LocalReference t val) []
-  | otherwise = LLVM.FMul fastMathflags (ConstantOperand $ Const.Float $ Single (-1.0)) (LocalReference t val) []
-genUnaryOp AST.Not _ t val = LLVM.Xor (ConstantOperand $ Const.Int 1 1) (LocalReference t val) []
+genUnaryOp :: UnaryOperator -> Type -> Name -> Instruction
+genUnaryOp AST.Plus rest val
+  | isIntegralType rest = LLVM.Mul False False (ConstantOperand $ Const.Int 32 1) (LocalReference rest val) []
+  | otherwise = LLVM.FMul fastMathflags (ConstantOperand $ Const.Float $ Single 1.0) (LocalReference rest val) []
+genUnaryOp AST.Negation rest val
+  | isIntegralType rest = LLVM.Mul False False (ConstantOperand $ Const.Int 32 (-1)) (LocalReference rest val) []
+  | otherwise = LLVM.FMul fastMathflags (ConstantOperand $ Const.Float $ Single (-1.0)) (LocalReference rest val) []
+genUnaryOp AST.Not rest val = LLVM.Xor (ConstantOperand $ Const.Int 1 1) (LocalReference rest val) []
 
 fastMathflags :: FastMathFlags
 fastMathflags = FastMathFlags {
@@ -146,3 +151,20 @@ allocLiteral litType val = do
     Do $ LLVM.Store False ptrRef (ConstantOperand val) Nothing 0 [],
     opName := LLVM.Load False ptrRef Nothing 0 [] 
     ])
+    
+-- | Generates type casting code (int -> float and etc)
+genConvertion :: JassType -> JassType -> Name -> Codegen (Name, [Named Instruction])
+genConvertion JReal JInteger valName = convHelper JReal JInteger $ \tpSource tpDist -> LLVM.FPToSI (LocalReference tpSource valName) tpDist []
+genConvertion JInteger JReal valName = convHelper JInteger JReal $ \tpSource tpDist -> LLVM.SIToFP (LocalReference tpSource valName) tpDist []
+genConvertion JInteger JBoolean valName = convHelper JInteger JBoolean $ \tpSource tpDist -> LLVM.Trunc (LocalReference tpSource valName) tpDist []
+genConvertion JBoolean JInteger valName = convHelper JBoolean JInteger $ \tpSource tpDist -> LLVM.ZExt (LocalReference tpSource valName) tpDist []
+genConvertion from to valName 
+  | from == to = return (valName, [])
+  | otherwise = throwError $ strMsg $ "ICE: cannot convert from " ++ show from ++ " to " ++ show to 
+
+convHelper :: JassType -> JassType -> (Type -> Type -> Instruction) -> Codegen (Name, [Named Instruction]) 
+convHelper tSource tDist instr= do
+  opName <- generateName
+  tpSource <- toLLVMType tSource
+  tpDist <- toLLVMType tDist
+  return (opName, [opName := instr tpSource tpDist])
