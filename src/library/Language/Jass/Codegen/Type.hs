@@ -42,7 +42,7 @@ getReference name = do
   mvar <- getVariable name
   case mvar of
     Just var -> do
-      varType <- toLLVMType $ getVarType var
+      varType <- ptr <$> toLLVMType (getVarType var)
       return (varType, if isGlobalVariable var then LLVM.ConstantOperand $ LLVM.GlobalReference varType (LLVM.Name name) else LLVM.LocalReference varType (LLVM.Name name))
     Nothing -> throwError $ strMsg $ "ICE: cannot find variable " ++ name
     

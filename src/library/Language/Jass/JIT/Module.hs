@@ -5,10 +5,19 @@ module Language.Jass.JIT.Module(
   , optimizeModule
   , executeMain
   , moduleAssembly
-  , extractAST
+  , ExtractAST(..)
   , UnlinkedModule
+  , executeJass0
+  , executeJass1
+  , executeJass2
+  , executeJass3
+  , executeJass4
+  , executeJass5
+  , executeJass6
+  , executeJass7
   ) where
 
+import Language.Jass.Utils
 import Language.Jass.Codegen.Generator
 import Language.Jass.Semantic.Check
 import Language.Jass.Parser.Grammar
@@ -27,18 +36,19 @@ import Data.Either
 import Data.List (nub)
 import Control.Monad.IO.Class (liftIO)
 
-mapLeft ::  (e -> e') -> Either e a -> Either e' a
-mapLeft f me = case me of
-    Left err -> Left $ f err
-    Right r -> Right r
-
 -- | Compiled module with unset natives
-data UnlinkedModule = UnlinkedModule NativesMap (Either LLVMAST.Module LLVM.Module)
+data ParsedModule = ParsedModule NativesMapping LLVMAST.Module
+data UnlinkedModule = UnlinkedModule NativesMap LLVM.Module
 type NativesMap = HashMap String (Either LLVMAST.Name (LLVMAST.Name, FunPtr ()))
 
-extractAST :: UnlinkedModule -> IO LLVMAST.Module
-extractAST (UnlinkedModule _ (Left m)) = return m
-extractAST (UnlinkedModule _ (Right m)) = moduleAST m
+class ExtractAST a where
+  extractAST :: a -> IO LLVMAST.Module
+
+instance ExtractAST ParsedModule where
+  extractAST (ParsedModule _ m) = return m
+  
+instance ExtractAST UnlinkedModule where
+  extractAST (UnlinkedModule _ m) = moduleAST m
  
 -- | Creates new native map from mapping (user should fill all natives with ptrs)
 nativesMapFromMapping :: NativesMapping -> NativesMap
@@ -70,38 +80,30 @@ checkNativesName names mapping
 getNativesBindings :: NativesMap -> [(LLVMAST.Name, FunPtr ())]
 getNativesBindings = rights . HM.elems
 
-liftExcept :: (Functor m, Monad m, Show e) => m (Either e a) -> ExceptT String m a
-liftExcept action = ExceptT $ mapLeft show <$> action
-
-liftExceptPure :: (Functor m, Monad m, Show e) => Either e a -> ExceptT String m a
-liftExceptPure action = ExceptT $ return $ mapLeft show action
-
-loadJassModule :: String -> String -> ExceptT String IO UnlinkedModule
+loadJassModule :: String -> String -> ExceptT String IO ParsedModule
 loadJassModule name code = loadJassFromSource $ liftExceptPure $ parseJass name code
 
-loadJassModuleFromFile :: FilePath -> ExceptT String IO UnlinkedModule
+loadJassModuleFromFile :: FilePath -> ExceptT String IO ParsedModule
 loadJassModuleFromFile path = loadJassFromSource $ liftExcept $ parseJassFile path
 
-loadJassFromSource :: ExceptT String IO JassModule -> ExceptT String IO UnlinkedModule
+loadJassFromSource :: ExceptT String IO JassModule -> ExceptT String IO ParsedModule
 loadJassFromSource source = do
   tree <- source
   context <- liftExceptPure $ checkModuleSemantic tree
   (mapping, module') <- liftExceptPure $ uncurry3 generateLLVM context
-  return $ UnlinkedModule (nativesMapFromMapping mapping) (Left module')
+  return $ ParsedModule mapping module'
 
-withRaisedAST :: Context -> UnlinkedModule -> (UnlinkedModule -> ExceptT String IO a) -> ExceptT String IO a
-withRaisedAST _ module'@(UnlinkedModule _ (Right _)) f = f module'
-withRaisedAST cntx (UnlinkedModule m (Left module')) f = do
-  res <- withModuleFromAST cntx module' $ \mod' -> runExceptT $ f $ UnlinkedModule m (Right mod')
+withRaisedAST :: Context -> ParsedModule -> (UnlinkedModule -> ExceptT String IO a) -> ExceptT String IO a
+withRaisedAST cntx (ParsedModule mapping module') f = do
+  let map' = nativesMapFromMapping mapping
+  res <- withModuleFromAST cntx module' $ \mod' -> runExceptT $ f $ UnlinkedModule map' mod'
   liftExceptPure res
 
 moduleAssembly :: UnlinkedModule -> ExceptT String IO String
-moduleAssembly (UnlinkedModule _ (Left _)) = throwE "Use withRaisedAST first"
-moduleAssembly (UnlinkedModule _ (Right llvmModule)) = liftIO $ moduleLLVMAssembly llvmModule
+moduleAssembly (UnlinkedModule _ llvmModule) = liftIO $ moduleLLVMAssembly llvmModule
 
 optimizeModule :: UnlinkedModule -> ExceptT String IO ()
-optimizeModule (UnlinkedModule _ (Left _)) = throwE "Use withRaisedAST first"
-optimizeModule (UnlinkedModule _ (Right llvmModule)) = liftIO $ void $ withPassManager set $ \ mng -> runPassManager mng llvmModule
+optimizeModule (UnlinkedModule _ llvmModule) = liftIO $ void $ withPassManager set $ \ mng -> runPassManager mng llvmModule
   where set = defaultCuratedPassSetSpec {
                 optLevel = Just 3
               , simplifyLibCalls = Just True
@@ -109,23 +111,67 @@ optimizeModule (UnlinkedModule _ (Right llvmModule)) = liftIO $ void $ withPassM
               , superwordLevelParallelismVectorize = Just True
               , useInlinerWithThreshold = Just 1000
               }
-
+              
 type JassMain = IO ()
 foreign import ccall "dynamic"
-  mkJassMain :: FunPtr JassMain -> JassMain
+  mkJassMain :: FunPtr JassMain -> JassMain  
   
 executeMain :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> ExceptT String IO ()
-executeMain _ _ (UnlinkedModule _ (Left _)) = fail "Use withRaisedAST first"
-executeMain cntx natives (UnlinkedModule nativesMap (Right llvmModule)) = do
+executeMain cntx natives module' = executeJass0 cntx natives module' "main" mkJassMain
+
+executeJass0 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (IO a)-> IO a) -> ExceptT String IO a
+executeJass1 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (a -> IO b) -> a -> IO b) -> a -> ExceptT String IO b
+executeJass2 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (a -> b -> IO c) -> a -> b -> IO c) -> a -> b -> ExceptT String IO c
+executeJass3 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (a -> b -> c -> IO d) -> a -> b -> c -> IO d) -> a -> b -> c -> ExceptT String IO d
+executeJass4 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (a -> b -> c -> d -> IO e) -> a -> b -> c -> d -> IO e) -> a -> b -> c -> d -> ExceptT String IO e
+executeJass5 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (a -> b -> c -> d -> e -> IO f) -> a -> b -> c -> d -> e -> IO f) -> a -> b -> c -> d -> e -> ExceptT String IO f
+executeJass6 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (a -> b -> c -> d -> e -> f -> IO g) -> a -> b -> c -> d -> e -> f -> IO g) -> a -> b -> c -> d -> e -> f -> ExceptT String IO g
+executeJass7 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (a -> b -> c -> d -> e -> f -> g -> IO i) -> a -> b -> c -> d -> e -> f -> g -> IO i) -> a -> b -> c -> d -> e -> f -> g -> ExceptT String IO i
+
+executeJass0 cntx natives module' funcName funcMaker = executeJass cntx natives module' $ \ex -> callFunc0 ex funcName funcMaker  
+executeJass1 cntx natives module' funcName funcMaker arg1 = executeJass cntx natives module' $ \ex -> callFunc1 ex funcName funcMaker arg1
+executeJass2 cntx natives module' funcName funcMaker arg1 arg2 = executeJass cntx natives module' $ \ex -> callFunc2 ex funcName funcMaker arg1 arg2
+executeJass3 cntx natives module' funcName funcMaker arg1 arg2 arg3 = executeJass cntx natives module' $ \ex -> callFunc3 ex funcName funcMaker arg1 arg2 arg3 
+executeJass4 cntx natives module' funcName funcMaker arg1 arg2 arg3 arg4 = executeJass cntx natives module' $ \ex -> callFunc4 ex funcName funcMaker arg1 arg2 arg3 arg4
+executeJass5 cntx natives module' funcName funcMaker arg1 arg2 arg3 arg4 arg5 = executeJass cntx natives module' $ \ex -> callFunc5 ex funcName funcMaker arg1 arg2 arg3 arg4 arg5
+executeJass6 cntx natives module' funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6 = executeJass cntx natives module' $ \ex -> callFunc6 ex funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6
+executeJass7 cntx natives module' funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6 arg7 = executeJass cntx natives module' $ \ex -> callFunc7 ex funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6 arg7
+            
+executeJass :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> (ExecutableModule JIT -> ExceptT String IO a) -> ExceptT String IO a 
+executeJass cntx natives (UnlinkedModule nativesMap llvmModule) action = do
   checkNativesName (fst <$> natives) nativesMap
   let bindedNatives = foldl (\mp f -> f mp) nativesMap $ fmap (uncurry nativesMapBind) natives
   case isAllNativesBinded bindedNatives of
       Just name -> throwE $ "Native '" ++ name ++ "' isn't binded!"
       Nothing -> liftExcept $ withJIT cntx 3 $ \jit -> withModuleInEngine jit llvmModule $ \exModule -> runExceptT $ do
                   mapM_ (uncurry $ callNativeBinder exModule) $ getNativesBindings bindedNatives
-                  callMain exModule
-  
+                  action exModule
 
+callFunc0 :: ExecutableModule JIT -> String -> (FunPtr (IO a) -> IO a) -> ExceptT String IO a
+callFunc1 :: ExecutableModule JIT -> String -> (FunPtr (a -> IO b) -> a -> IO b) -> a -> ExceptT String IO b
+callFunc2 :: ExecutableModule JIT -> String -> (FunPtr (a -> b -> IO c) -> a -> b -> IO c) -> a -> b -> ExceptT String IO c
+callFunc3 :: ExecutableModule JIT -> String -> (FunPtr (a -> b -> c -> IO d) -> a -> b -> c -> IO d) -> a -> b -> c -> ExceptT String IO d
+callFunc4 :: ExecutableModule JIT -> String -> (FunPtr (a -> b -> c -> d -> IO e) -> a -> b -> c -> d -> IO e) -> a -> b -> c -> d -> ExceptT String IO e
+callFunc5 :: ExecutableModule JIT -> String -> (FunPtr (a -> b -> c -> d -> e -> IO f) -> a -> b -> c -> d -> e -> IO f) -> a -> b -> c -> d -> e -> ExceptT String IO f
+callFunc6 :: ExecutableModule JIT -> String -> (FunPtr (a -> b -> c -> d -> e -> f -> IO g) -> a -> b -> c -> d -> e -> f -> IO g) -> a -> b -> c -> d -> e -> f -> ExceptT String IO g
+callFunc7 :: ExecutableModule JIT -> String -> (FunPtr (a -> b -> c -> d -> e -> f -> g -> IO i) -> a -> b -> c -> d -> e -> f -> g -> IO i) -> a -> b -> c -> d -> e -> f -> g -> ExceptT String IO i
+
+callFunc0 exModule funcName funcMaker = callFunc exModule funcName $ \ptr -> liftIO $ funcMaker $ castFunPtr ptr
+callFunc1 exModule funcName funcMaker arg1 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1
+callFunc2 exModule funcName funcMaker arg1 arg2 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1 arg2
+callFunc3 exModule funcName funcMaker arg1 arg2 arg3 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1 arg2 arg3
+callFunc4 exModule funcName funcMaker arg1 arg2 arg3 arg4 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1 arg2 arg3 arg4
+callFunc5 exModule funcName funcMaker arg1 arg2 arg3 arg4 arg5 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1 arg2 arg3 arg4 arg5
+callFunc6 exModule funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1 arg2 arg3 arg4 arg5 arg6
+callFunc7 exModule funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6 arg7 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1 arg2 arg3 arg4 arg5 arg6 arg7
+
+callFunc :: ExecutableModule JIT -> String -> (FunPtr () -> ExceptT String IO a) -> ExceptT String IO a 
+callFunc exModule funcName action = do
+  mptr <- liftIO $ getFunction exModule (Name funcName)
+  case mptr of
+    Nothing -> throwE "Cannot find main in jass module!"
+    Just ptr -> action ptr
+    
 type NativeBinder = FunPtr () -> IO ()
 foreign import ccall "dynamic"
   mkNativeBinder :: FunPtr NativeBinder -> NativeBinder
@@ -138,16 +184,3 @@ callNativeBinder ex nativeName ptr = do
     Just binderPtr -> do
       let binder = mkNativeBinder $ castFunPtr binderPtr
       liftIO $ binder ptr
-
-callMain :: ExecutableModule JIT -> ExceptT String IO ()
-callMain ex = do 
-  mptr <- liftIO $ getFunction ex (Name "main")
-  case mptr of
-    Nothing -> throwE "Cannot find main in jass module!"
-    Just ptr -> do
-      let mainFunc = mkJassMain $ castFunPtr ptr
-      liftIO mainFunc
-      
-{-# INLINE uncurry3 #-}
-uncurry3 :: (a -> b -> c -> d) -> (a, b, c) -> d
-uncurry3 f ~(a,b,c) = f a b c

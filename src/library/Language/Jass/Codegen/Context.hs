@@ -16,6 +16,7 @@ module Language.Jass.Codegen.Context(
   -- | Local variables
   addLocalVar,
   purgeLocalVars,
+  isParameter,
   -- | Name generation
   generateName,
   generateGlobalName,
@@ -136,7 +137,14 @@ addLocalVar var = do
     Nothing -> do
       context <- get
       put $ context { contextLocalVariables = HM.insert varName var (contextLocalVariables context)}
-      
+
+isParameter :: Name -> Codegen Bool
+isParameter varName = do
+  mvar <- getVariable varName
+  case mvar of
+    Just (VarParam _) -> return True
+    _ -> return False
+    
 purgeLocalVars :: Codegen ()
 purgeLocalVars = do
   context <- get

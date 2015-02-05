@@ -64,11 +64,12 @@ genLLVMExpression (FunctionCall _ funcName args) = do
   return (opName, concat argInstr ++ callInstr)
 genLLVMExpression (FunctionReference _ _) = throwError $ strMsg "ICE: function references aren't implemented!" --TODO: here
 genLLVMExpression (VariableReference _ varName) = do
-  opName <- generateName
-  (_, ref) <- getReference varName
-  return (opName, [
-    opName := LLVM.Load False ref Nothing 0 []
-    ])
+  isPar <- isParameter varName
+  if isPar then return (Name varName, []) else do
+    opName <- generateName
+    (_, ref) <- getReference varName
+    return (opName, [opName := Load False ref Nothing 0 []])
+    
 genLLVMExpression (IntegerLiteral _ val) = allocLiteral JInteger $ Const.Int 32 $ toInteger val
 genLLVMExpression (RealLiteral _ val) = allocLiteral JReal $ Const.Float $ Single val
 genLLVMExpression (BoolLiteral _ val) = allocLiteral JReal $ Const.Int 1 $ if val then 1 else 0

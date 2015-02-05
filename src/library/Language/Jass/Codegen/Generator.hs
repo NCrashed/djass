@@ -16,7 +16,6 @@ import LLVM.General.AST.Global
 import LLVM.General.AST.Type
 import Control.Monad
 import Control.Monad.Error
-import Control.Applicative
 
 generateLLVM :: [TypeDef] -> [Callable] -> [Variable] -> Either SemanticError (NativesMapping, Module)
 generateLLVM types callables variables = runCodegen context $ do
