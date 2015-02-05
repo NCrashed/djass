@@ -68,28 +68,54 @@ foreign import ccall "dynamic"
 type IncFloatFunc = CFloat -> IO CFloat
 foreign import ccall "dynamic"
   mkIncFloatFunc :: FunPtr IncFloatFunc -> IncFloatFunc
-         
+
+type GreaterFunc = CInt -> CInt -> IO CChar
+foreign import ccall "dynamic"
+  mkGreaterFunc :: FunPtr GreaterFunc -> GreaterFunc
+
+type GreaterFuncIF = CInt -> CFloat -> IO CChar
+foreign import ccall "dynamic"
+  mkGreaterFuncIF :: FunPtr GreaterFuncIF -> GreaterFuncIF
+  
+type FibFunc = CInt -> IO CInt
+foreign import ccall "dynamic"
+  mkFibFunc :: FunPtr FibFunc -> FibFunc
+           
 checkMath :: Context -> UnlinkedModule -> ExceptT String IO ()
 checkMath cntx llvmModule = do
-  summ1 <- executeJass2 cntx [] llvmModule "summ" mkSummFunc 1 1
+  summ1 <- exec2 "summ" mkSummFunc 1 1
   liftIO $ summ1 @?= 2 
-  summ2 <- executeJass2 cntx [] llvmModule "summ" mkSubsFunc 42 2
+  summ2 <- exec2 "summ" mkSubsFunc 42 2
   liftIO $ summ2 @?= 44
   
-  subs1 <- executeJass2 cntx [] llvmModule "subs" mkSubsFunc 42 2
+  subs1 <- exec2 "subs" mkSubsFunc 42 2
   liftIO $ subs1 @?= 40
-  subs2 <- executeJass2 cntx [] llvmModule "subs" mkSubsFunc 0 2
+  subs2 <- exec2 "subs" mkSubsFunc 0 2
   liftIO $ subs2 @?= -2
   
-  square1 <- executeJass1 cntx [] llvmModule "square" mkSquareFunc 2
+  square1 <- exec1 "square" mkSquareFunc 2
   liftIO $ square1 @?= 4
   
-  inc1 <- executeJass1 cntx [] llvmModule "inc" mkIncFunc 1
+  inc1 <- exec1 "inc" mkIncFunc 1
   liftIO $ inc1 @?= 2
   
-  incf1 <- executeJass1 cntx [] llvmModule "incf" mkIncFloatFunc 1
+  incf1 <- exec1 "incf" mkIncFloatFunc 1
   liftIO $ incf1 @?= 2.0
   
+  gr1 <- exec2 "greater" mkSubsFunc 2 1
+  liftIO $ gr1 @?= 1
+  grif1 <- exec2 "greaterif" mkSubsFunc 0 2
+  liftIO $ grif1 @?= 0
+  
+  fib1 <- exec1 "fib" mkFibFunc 2
+  liftIO $ fib1 @?= 1
+  fib2 <- exec1 "fib" mkFibFunc 11
+  liftIO $ fib2 @?= 55
+  
+  where  
+    exec1 = executeJass1 cntx [] llvmModule
+    exec2 = executeJass2 cntx [] llvmModule
+    
 simpleCodegenTest :: TestTree
 simpleCodegenTest = testGroup "jass helloworld"
   [ testCase "hello.j" $ checkJassFile "tests/hello.j" checkHello,

@@ -7,6 +7,7 @@ module Language.Jass.Semantic.Type(
   typeSubsetOf,
   isNumericType,
   getGeneralType,
+  getRootType,
   TypeInfer(..)
   ) where
   
@@ -100,6 +101,16 @@ isHandleSuccessor (JUserDefined name) = do
     Just t -> isHandleSuccessor $ getTypeBase t
 isHandleSuccessor _ = return False
 
+-- | Finds most general type 
+getRootType :: TypeInfer m => JassType -> m JassType
+getRootType JNull = return JHandle
+getRootType (JUserDefined tname) = do
+  mtype <- findTypeDef tname
+  case mtype of 
+    Nothing -> throwError $ strMsg $ "Unknown type " ++ tname
+    Just type' -> getRootType $ getTypeBase type'
+getRootType a = return a
+ 
 -- | Returns first type that is ancestor of two types
 getGeneralType :: TypeInfer m => JassType -> JassType -> m (Maybe JassType)
 getGeneralType t1 t2

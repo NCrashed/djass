@@ -46,9 +46,7 @@ instance LLVMDefinition Callable where
     -- Init context for new function
     purgeLocalVars
     purgeNames
-    _ <- purgeBlocks
     setCurrentFunction fname 
-    pushNewBlock =<< generateName
     forM_ pars $ addLocalVar . VarParam
     forM_ locals $ addLocalVar . VarLocal
     

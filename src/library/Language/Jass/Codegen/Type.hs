@@ -6,7 +6,6 @@ module Language.Jass.Codegen.Type(
     toLLVMType
   , toLLVMType'
   , defaultValue
-  , getRootType
   , jassArray
   , getFunctionType
   , getFunctionArgumentsTypes
@@ -76,15 +75,6 @@ defaultValue (JArray et) = do
   return $ Array et' $ replicate arraySize val
 defaultValue t@(JUserDefined _) = defaultValue =<< getRootType t
 defaultValue JNull = throwError $ strMsg "ICE: cannot generate code for special type JNull"
-
--- | Returns most parent type of specified type
-getRootType :: JassType -> Codegen JassType
-getRootType (JUserDefined tname) = do
-  mtp <- getType tname
-  case mtp of
-    Nothing -> throwError $ strMsg $ "ICE: cannot find type " ++ tname
-    Just tp -> return $ getTypeBase tp
-getRootType t = return t
 
 -- | Generates array type from element LLVM type
 jassArray :: Type -> Type

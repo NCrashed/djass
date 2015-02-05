@@ -6,7 +6,8 @@ import Language.Jass.Parser.AST as AST
 import Language.Jass.Codegen.Context
 import Language.Jass.Codegen.Type
 import LLVM.General.AST as LLVM
-import LLVM.General.AST.IntegerPredicate as LLVM
+import qualified LLVM.General.AST.IntegerPredicate as LLVMI
+import qualified LLVM.General.AST.FloatingPointPredicate as LLVMF
 import LLVM.General.AST.Global as Glob
 import LLVM.General.AST.CallingConvention
 import LLVM.General.AST.Constant as Const
@@ -24,12 +25,15 @@ genLLVMExpression expr@(BinaryExpression _ op left right) = do
   opName <- generateName
   leftJassType <- inferType left
   rightJassType <- inferType right
-  resJassType <- inferType expr
-  (leftName, leftConvInstr) <- genConvertion leftJassType resJassType leftNameRaw
-  (rightName, rightConvInstr) <- genConvertion rightJassType resJassType rightNameRaw
-  resType <- toLLVMType resJassType
-  let instr = opName := genBinaryOp op resType leftName rightName
-  return (opName, leftInstr ++ leftConvInstr ++ rightInstr ++ rightConvInstr ++ [instr])
+  mgeneralType <- getGeneralType leftJassType rightJassType
+  case mgeneralType of
+    Nothing -> throwError $ strMsg $ "ICE: cannot use types " ++ show leftJassType ++ " and " ++ show rightJassType ++ " at " ++ show op
+    Just generalType -> do 
+      (leftName, leftConvInstr) <- genConvertion leftJassType generalType leftNameRaw
+      (rightName, rightConvInstr) <- genConvertion rightJassType generalType rightNameRaw
+      genType <- toLLVMType generalType
+      let instr = opName := genBinaryOp op genType leftName rightName
+      return (opName, leftInstr ++ leftConvInstr ++ rightInstr ++ rightConvInstr ++ [instr])
 genLLVMExpression expr@(UnaryExpression _ op val) = do
   (valNameRaw, valInstr) <- genLLVMExpression val
   resJassType <- inferType expr
@@ -58,14 +62,14 @@ genLLVMExpression (FunctionCall _ funcName args) = do
   let argOperands = uncurry LocalReference <$> zip argTypes argNames
   isNative <- isDefinedNative funcName
   callInstr <- if not isNative then 
-                return [Do $ Call False C [] 
+                return [opName := Call False C [] 
                        (Right $ ConstantOperand $ GlobalReference funcType (Name funcName)) 
                        (zip argOperands (repeat [])) [] []]
                else do
                 tempName <- generateName
                 return [
                   tempName := Load False (ConstantOperand $ GlobalReference (ptr funcType) (Name funcName)) Nothing 0 [],
-                  Do $ Call False C [] (Right $ LocalReference funcType tempName) (zip argOperands (repeat [])) [] []]
+                  opName := Call False C [] (Right $ LocalReference funcType tempName) (zip argOperands (repeat [])) [] []]
   return (opName, concat argInstr ++ callInstr)
 genLLVMExpression (FunctionReference _ _) = throwError $ strMsg "ICE: function references aren't implemented!" --TODO: here
 genLLVMExpression (VariableReference _ varName) = do
@@ -101,12 +105,24 @@ genLLVMExpression (StringLiteral _ val) = do
 genBinaryOp :: BinaryOperator -> Type -> Name -> Name -> Instruction
 genBinaryOp AST.And res left right = LLVM.And (LocalReference res left) (LocalReference res right) []
 genBinaryOp AST.Or res left right = LLVM.Or (LocalReference res left) (LocalReference res right) []
-genBinaryOp AST.Equal res left right = LLVM.ICmp LLVM.EQ (LocalReference res left) (LocalReference res right) []
-genBinaryOp AST.NotEqual res left right = LLVM.ICmp LLVM.NE (LocalReference res left) (LocalReference res right) []
-genBinaryOp AST.GreaterEqual res left right = LLVM.ICmp LLVM.UGE (LocalReference res left) (LocalReference res right) []
-genBinaryOp AST.LessEqual res left right = LLVM.ICmp LLVM.ULE (LocalReference res left) (LocalReference res right) []
-genBinaryOp AST.Greater res left right = LLVM.ICmp LLVM.UGT (LocalReference res left) (LocalReference res right) []
-genBinaryOp AST.Less res left right = LLVM.ICmp LLVM.ULT (LocalReference res left) (LocalReference res right) []
+genBinaryOp AST.Equal res left right -- | TODO: string compare
+  | isIntegralType res = LLVM.ICmp LLVMI.EQ (LocalReference res left) (LocalReference res right) []
+  | otherwise = LLVM.FCmp LLVMF.OEQ (LocalReference res left) (LocalReference res right) [] 
+genBinaryOp AST.NotEqual res left right 
+  | isIntegralType res = LLVM.ICmp LLVMI.NE (LocalReference res left) (LocalReference res right) []
+  | otherwise = LLVM.FCmp LLVMF.ONE (LocalReference res left) (LocalReference res right) [] 
+genBinaryOp AST.GreaterEqual res left right 
+  | isIntegralType res = LLVM.ICmp LLVMI.UGE (LocalReference res left) (LocalReference res right) []
+  | otherwise = LLVM.FCmp LLVMF.OGE (LocalReference res left) (LocalReference res right) [] 
+genBinaryOp AST.LessEqual res left right 
+  | isIntegralType res = LLVM.ICmp LLVMI.ULE (LocalReference res left) (LocalReference res right) []
+  | otherwise = LLVM.FCmp LLVMF.OLE (LocalReference res left) (LocalReference res right) [] 
+genBinaryOp AST.Greater res left right 
+  | isIntegralType res = LLVM.ICmp LLVMI.UGT (LocalReference res left) (LocalReference res right) []
+  | otherwise = LLVM.FCmp LLVMF.OGT (LocalReference res left) (LocalReference res right) [] 
+genBinaryOp AST.Less res left right 
+  | isIntegralType res = LLVM.ICmp LLVMI.ULT (LocalReference res left) (LocalReference res right) []
+  | otherwise = LLVM.FCmp LLVMF.OLT (LocalReference res left) (LocalReference res right) [] 
 genBinaryOp AST.Summ rest left right 
   | isIntegralType rest = LLVM.Add False False (LocalReference rest left) (LocalReference rest right) []
   | otherwise = LLVM.FAdd fastMathflags (LocalReference rest left) (LocalReference rest right) []

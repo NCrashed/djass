@@ -386,17 +386,22 @@ typeCheckArithmetic op expr1 expr2= binaryTypecheckErrorWrapper expr1 expr2 op $
 
 -- | Performs type checking for relational operators (==, !=, >, <, >=, <=)      
 typeCheckRelational :: BinaryOperator -> Expression -> Expression -> JassSem s ()
-typeCheckRelational op expr1 expr2 = binaryTypecheckErrorWrapper expr1 expr2 op $ do
-  res1 <- typeCheckBinaryExpression (oneOfAssertion [JInteger, JReal]) expr1 expr2
-  res2 <- typeCheckBinaryExpression (const.const.const $ True) expr1 expr2
-  return (res1 || res2)
+typeCheckRelational op expr1 expr2 
+  | op `elem` [Equal, NotEqual] = binaryTypecheckErrorWrapper expr1 expr2 op $ typeCheckBinaryExpression equalityAssertion expr1 expr2
+  | otherwise = binaryTypecheckErrorWrapper expr1 expr2 op $ typeCheckBinaryExpression (oneOfAssertion [JInteger, JReal, JBoolean]) expr1 expr2
 
 -- | Returns true if general type within specified set
-oneOfAssertion :: [JassType] -> JassType -> JassType -> JassType -> Bool
-oneOfAssertion types gt _ _ = gt `elem` types
+oneOfAssertion :: [JassType] -> JassType -> JassType -> JassType -> JassSem s Bool
+oneOfAssertion types gt _ _ = return $ gt `elem` types
 
+-- | Checks that two types are allowed in == and /= operators
+equalityAssertion :: JassType -> JassType -> JassType -> JassSem s Bool
+equalityAssertion gt t1 t2 = do
+ gt' <- getRootType gt
+ return $ (gt == t1 || gt == t2) && (gt' `elem` [JInteger, JReal, JBoolean, JHandle, JString])
+ 
 -- | Type checking binary operator, first assertion takes general type of left and right expressions
-typeCheckBinaryExpression :: (JassType -> JassType -> JassType -> Bool) 
+typeCheckBinaryExpression :: (JassType -> JassType -> JassType -> JassSem s Bool) 
   -> Expression -> Expression -> JassSem s Bool
 typeCheckBinaryExpression assertion expr1 expr2 = do
   t1 <- inferType expr1
@@ -404,7 +409,7 @@ typeCheckBinaryExpression assertion expr1 expr2 = do
   mgt <- getGeneralType t1 t2
   case mgt of
     Nothing -> return False
-    Just gt -> return $ assertion gt t1 t2
+    Just gt -> assertion gt t1 t2
 
 -- | Wraps error message if assertions are equal to false
 binaryTypecheckErrorWrapper :: Expression -> Expression -> BinaryOperator -> JassSem s Bool -> JassSem s ()
