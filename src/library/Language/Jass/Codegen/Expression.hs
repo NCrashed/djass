@@ -19,10 +19,10 @@ import Data.Char
 
 -- | Generates instruction to calculate 
 genLLVMExpression :: Expression -> Codegen (Name, [Named Instruction])
-genLLVMExpression expr@(BinaryExpression _ op left right) = do
+genLLVMExpression (BinaryExpression _ op left right) = do
   (leftNameRaw, leftInstr) <- genLLVMExpression left
   (rightNameRaw, rightInstr) <- genLLVMExpression right
-  opName <- generateName
+  opName <- generateName $ showBinaryOpAsWord op
   leftJassType <- inferType left
   rightJassType <- inferType right
   mgeneralType <- getGeneralType leftJassType rightJassType
@@ -39,14 +39,14 @@ genLLVMExpression expr@(UnaryExpression _ op val) = do
   resJassType <- inferType expr
   valJassType <- inferType val
   (valName, valConvInstr) <- genConvertion valJassType resJassType valNameRaw
-  opName <- generateName
+  opName <- generateName $ showUnaryOpAsWord op
   resType <- toLLVMType resJassType
   let instr = opName := genUnaryOp op resType valName
   return (opName, valInstr ++ valConvInstr ++ [instr])
 genLLVMExpression (ArrayReference _ arrName indExpr) = do
   (indName, indInstr) <- genLLVMExpression indExpr
-  ptrName <- generateName
-  opName <- generateName
+  ptrName <- generateName "arrptr"
+  opName <- generateName "arrelem"
   indType <- toLLVMType =<< inferType indExpr
   (refType, ref) <- getReference arrName
   return (opName, indInstr ++ [
@@ -58,7 +58,7 @@ genLLVMExpression (FunctionCall _ funcName args) = do
   let (argNames, argInstr) = unzip args' 
   funcType <- ptr <$> getFunctionType funcName
   argTypes <- getFunctionArgumentsTypes funcName
-  opName <- generateName
+  opName <- generateName "callres"
   let argOperands = uncurry LocalReference <$> zip argTypes argNames
   isNative <- isDefinedNative funcName
   callInstr <- if not isNative then 
@@ -66,7 +66,7 @@ genLLVMExpression (FunctionCall _ funcName args) = do
                        (Right $ ConstantOperand $ GlobalReference funcType (Name funcName)) 
                        (zip argOperands (repeat [])) [] []]
                else do
-                tempName <- generateName
+                tempName <- generateName "nativeptr"
                 return [
                   tempName := Load False (ConstantOperand $ GlobalReference (ptr funcType) (Name funcName)) Nothing 0 [],
                   opName := Call False C [] (Right $ LocalReference funcType tempName) (zip argOperands (repeat [])) [] []]
@@ -75,7 +75,7 @@ genLLVMExpression (FunctionReference _ _) = throwError $ strMsg "ICE: function r
 genLLVMExpression (VariableReference _ varName) = do
   isPar <- isParameter varName
   if isPar then return (Name varName, []) else do
-    opName <- generateName
+    opName <- generateName "varptr"
     (_, ref) <- getReference varName
     return (opName, [opName := Load False ref Nothing 0 []])
     
@@ -86,10 +86,10 @@ genLLVMExpression (NullLiteral _) = do
   tp <- toLLVMType JHandle
   allocLiteral JHandle $ Const.Null tp
 genLLVMExpression (StringLiteral _ val) = do
-  opName <- generateName
+  opName <- generateName "strptr"
   let size = fromIntegral(length val + 1)
   let chars = Const.Int 8 . toInteger . ord <$> val ++ "\0"
-  literalName <- generateGlobalName
+  literalName <- generateGlobalName "str"
   addDefinition $ GlobalDefinition $ globalVariableDefaults {
         name = literalName
       , Glob.type' = ArrayType size i8
@@ -158,8 +158,8 @@ fastMathflags = FastMathFlags {
 
 allocLiteral :: JassType -> Constant -> Codegen (Name, [Named Instruction])
 allocLiteral litType val = do
-  allocName <- generateName
-  opName <- generateName
+  allocName <- generateName "litptr"
+  opName <- generateName "litval"
   tp <- toLLVMType litType
   let ptrRef = LocalReference (ptr tp) allocName
   return (opName, [
@@ -180,7 +180,7 @@ genConvertion from to valName
 
 convHelper :: JassType -> JassType -> (Type -> Type -> Instruction) -> Codegen (Name, [Named Instruction]) 
 convHelper tSource tDist instr= do
-  opName <- generateName
+  opName <- generateName $ "to" ++ show tDist
   tpSource <- toLLVMType tSource
   tpDist <- toLLVMType tDist
   return (opName, [opName := instr tpSource tpDist])

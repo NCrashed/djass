@@ -58,16 +58,20 @@ type VariableDeclarations = HashMap Name Variable
 type NativesMapping = HashMap Name LLVM.Name 
 
 data CodegenContext = CodegenContext {
+  -- registry holds types, callables, vars and current module
   contextTypes :: TypeDeclarations,
   contextCallables :: CallableDeclarations,
   contextVariables :: VariableDeclarations,
   contextLocalVariables :: VariableDeclarations,
   contextModule :: LLVM.Module,
-  nameCounter :: Word,
-  globalNameCounter :: Word,
+  -- for name generation, hold name and count of collisions to add at the end of name
+  nameCounters :: HashMap Name Word,
+  globalNameCounters :: HashMap Name Word,
+  -- Specific state for block generation
   contextSavedBlocks :: [LLVM.BasicBlock],
   contextLoopReturn :: Maybe LLVM.Name,
   contextCurrentFunction :: String,
+  -- Saves natives placholders to link user implementation later
   nativesMapping :: NativesMapping
 }
 
@@ -78,8 +82,8 @@ newContext types callables variables = CodegenContext {
     contextVariables = fromList $ convertToMap getVarName variables,
     contextLocalVariables = HM.empty,
     contextModule = LLVM.defaultModule,
-    nameCounter = 0,
-    globalNameCounter = 0,
+    nameCounters = HM.empty,
+    globalNameCounters = HM.empty,
     contextSavedBlocks = [],
     contextLoopReturn = Nothing,
     contextCurrentFunction = "",
@@ -153,21 +157,34 @@ purgeLocalVars = do
 purgeNames :: Codegen ()
 purgeNames = do
   context <- get
-  put $ context { nameCounter = 0 }
+  put $ context { nameCounters = HM.empty }
   
-generateName :: Codegen LLVM.Name
-generateName = do
+-- | Generates unique name based on specified prefix
+-- Uniqueness is hold within a function 
+generateName :: String -> Codegen LLVM.Name
+generateName s = do
   context <- get
-  let i = nameCounter context
-  put $ context { nameCounter = i+1 }
-  return $ LLVM.UnName i
+  let cnts = nameCounters context
+  case s `HM.lookup` cnts of
+    Nothing -> do
+      put $ context { nameCounters = HM.insert s 1 cnts }
+      return $ LLVM.Name $ "0" ++ s
+    Just i -> do
+      put $ context { nameCounters = HM.insert s (i+1) cnts }
+      return $ LLVM.Name $ show i ++ s
 
-generateGlobalName :: Codegen LLVM.Name
-generateGlobalName = do
+-- | Generates global unique name based on spcified prefix
+generateGlobalName :: String -> Codegen LLVM.Name
+generateGlobalName s = do
   context <- get
-  let i = globalNameCounter context
-  put $ context { globalNameCounter = i+1 }
-  return $ LLVM.Name $ "global" ++ show i
+  let cnts = globalNameCounters context
+  case s `HM.lookup` cnts of
+    Nothing -> do
+      put $ context { globalNameCounters = HM.insert s 1 cnts }
+      return $ LLVM.Name $ "0_global_" ++ s
+    Just i -> do
+      put $ context { globalNameCounters = HM.insert s (i+1) cnts }
+      return $ LLVM.Name $ show i ++ "_global_" ++ s
   
 pushNewBlock :: LLVM.Name -> Codegen ()
 pushNewBlock name = do

@@ -6,7 +6,9 @@ module Language.Jass.Parser.AST.Expression(
   UnaryOperator(..),
   getExpressionPos,
   isArithmeticOperator,
-  isRelationalOperator
+  isRelationalOperator,
+  showBinaryOpAsWord,
+  showUnaryOpAsWord
   ) where
 
 import Language.Jass.Parser.SourcePos
@@ -49,7 +51,23 @@ instance Show BinaryOperator where
     show Multiply = "*"
     show Divide = "/"
     show Reminder = "mod"
-    
+
+-- | Prints operator as word without special symbols
+showBinaryOpAsWord :: BinaryOperator -> String
+showBinaryOpAsWord And = "and"
+showBinaryOpAsWord Or = "or"
+showBinaryOpAsWord Equal = "equal"
+showBinaryOpAsWord NotEqual = "notequal"
+showBinaryOpAsWord GreaterEqual = "greater_equal"
+showBinaryOpAsWord LessEqual = "less_equal"
+showBinaryOpAsWord Greater = "greater"
+showBinaryOpAsWord Less = "less"
+showBinaryOpAsWord Summ = "pluss"
+showBinaryOpAsWord Substract = "minus"
+showBinaryOpAsWord Multiply = "mult"
+showBinaryOpAsWord Divide = "div"
+showBinaryOpAsWord Reminder = "mod"
+      
 data UnaryOperator = Plus | Negation | Not
     deriving (Enum, Ord, Eq, Typeable)
 
@@ -57,6 +75,12 @@ instance Show UnaryOperator where
     show Plus = "+"
     show Negation = "-"
     show Not = "not"
+
+-- | Prints operator as word without special symbols
+showUnaryOpAsWord :: UnaryOperator -> String
+showUnaryOpAsWord Plus = "unary_plus"
+showUnaryOpAsWord Negation = "unary_minus"
+showUnaryOpAsWord Not = "not"
 
 type Name = String
  

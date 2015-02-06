@@ -17,7 +17,6 @@ module Language.Jass.Codegen.Type(
   ) where
 
 import Language.Jass.JassType
-import Language.Jass.Parser.AST.TypeDef
 import Language.Jass.Parser.AST.Parameter as AST
 import Language.Jass.Codegen.Context
 import Language.Jass.Semantic.Type as SemType

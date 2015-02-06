@@ -16,7 +16,7 @@ import LLVM.General.AST.Instruction as Instr
 
 genBodyBlocks :: [Statement] -> Codegen (Name, [BasicBlock])
 genBodyBlocks stmts = do
-  epilogueName <- generateName
+  epilogueName <- generateName "epilogue"
   -- finishCurrentBlock $ Br epilogueName []
   (start, blocks) <- genBlocks stmts epilogueName
   pushNewBlock epilogueName
@@ -30,7 +30,7 @@ genBodyBlocks stmts = do
     
 genBlocks :: [Statement] -> Name -> Codegen (Name, [BasicBlock])
 genBlocks stmts nextBlock = catchBlocks $ do
-  startName <- generateName
+  startName <- generateName "block"
   pushNewBlock startName
   mapM_ genLLVMStatement stmts
   finishCurrentBlock $ Br nextBlock []
@@ -59,7 +59,7 @@ genLLVMStatement (SetArrayStatement _ _ name indExpr valExpr) = do
   (valExprName, valExprInstr) <- genLLVMExpression valExpr
   (elemType, varRef) <- getReference name
   indType <- toLLVMType JInteger
-  indexPtrName <- generateName
+  indexPtrName <- generateName "index"
   let indexInstr = indexPtrName := Instr.GetElementPtr True 
                    varRef
                    [LocalReference indType indExprName] []
@@ -70,7 +70,7 @@ genLLVMStatement (SetArrayStatement _ _ name indExpr valExpr) = do
   
 genLLVMStatement (IfThenElseStatement _ _ condExpr thenStmts elseifs) = do  
   (condExprName, condExprInstr) <- genLLVMExpression condExpr
-  afterBlockName <- generateName
+  afterBlockName <- generateName "block_afterif"
   (thenStart, thenBlocks) <- genBlocks thenStmts afterBlockName
   elseifTriples <- mapM (genElseIf afterBlockName) elseifs
   let firstBranchName = getFirstElseBlock afterBlockName elseifTriples
@@ -101,7 +101,7 @@ genLLVMStatement (IfThenElseStatement _ _ condExpr thenStmts elseifs) = do
     genElseIf afterName (Just cond, stmts) = do
       (condName, condInstr) <- genLLVMExpression cond
       (elseStart, elseBlocks) <- genBlocks stmts afterName
-      futureCondBlock <- generateName
+      futureCondBlock <- generateName "block_elseifcond"
       return (Just (condName, futureCondBlock, condInstr), elseStart, elseBlocks)
       
 
@@ -127,17 +127,17 @@ genLLVMStatement (CallStatement _ _ name args) = do
                        (Right $ ConstantOperand $ GlobalReference funcType (Name name)) 
                        (zip argsRefs (repeat [])) [] []]
                else do
-                tempName <- generateName
+                tempName <- generateName "nativeptr"
                 return [
                   tempName := Load False (ConstantOperand $ GlobalReference (ptr funcType) (Name name)) Nothing 0 [],
                   Do $ Call False C [] (Right $ LocalReference funcType tempName) (zip argsRefs (repeat [])) [] []]
   appendCurrentBlock $ concat argsInstrs ++ callInstr
 genLLVMStatement (LoopStatement _ _ stmts) = do
-  preBlock <- generateName
+  preBlock <- generateName "block_loop_ptr"
   finishCurrentBlock (Br preBlock [])
   pushNewBlock preBlock
   
-  afterBlock <- generateName
+  afterBlock <- generateName "block_loop_after"
   saveLoopReturn afterBlock
   (loopStart, loopBlocks) <- genBlocks stmts preBlock
   finishCurrentBlock (Br loopStart [])
@@ -146,7 +146,7 @@ genLLVMStatement (LoopStatement _ _ stmts) = do
 genLLVMStatement (ExitWhenStatement _ cond) = do
   (condName, condInstr) <- genLLVMExpression cond
   retName <- getLoopReturn
-  afterBlock <- generateName
+  afterBlock <- generateName "block_exitwhen_after"
   appendCurrentBlock condInstr
   finishCurrentBlock $ CondBr (LocalReference i1 condName) retName afterBlock []
   pushNewBlock afterBlock
