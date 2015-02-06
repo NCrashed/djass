@@ -13,6 +13,7 @@ module Language.Jass.JIT.Calling(
 import Foreign.C.Types
 import Foreign.C.String
 import GHC.Float
+import Control.Monad.IO.Class
 
 -- | Jass function, same as (->)
 data a :-> b = a :-> b
@@ -35,7 +36,7 @@ class ToJassConv a => ApplyJassArgs a b c | b -> c where
 -- | Describes convertion to Jass runtime represenation of types
 class ToJassConv a where
   type JassSide a :: *
-  toJass          :: a -> IO (JassSide a) 
+  toJass          :: MonadIO m => a -> m (JassSide a) 
 
 instance ToJassConv () where
   type JassSide () = ()
@@ -59,7 +60,7 @@ instance ToJassConv Double where
   
 instance ToJassConv String where
   type JassSide String = CString
-  toJass = newCString -- | TODO: need to free
+  toJass s = liftIO $ newCString s -- | TODO: need to free
 
 instance ToJassConv Bool where
   type JassSide Bool = CChar
@@ -71,7 +72,7 @@ instance ToJassConv Bool where
 -- | Describes convertion from Jass runtime representation of types
 class FromJassConv a where
   type HaskellSide a :: *
-  fromJass           :: a -> IO (HaskellSide a)
+  fromJass           :: MonadIO m => a -> m (HaskellSide a)
 
 instance FromJassConv () where
   type HaskellSide () = ()
@@ -87,7 +88,7 @@ instance FromJassConv CFloat where
   
 instance FromJassConv CString where
   type HaskellSide CString = String
-  fromJass = peekCString
+  fromJass s = liftIO $ peekCString s
   
 instance FromJassConv CChar where
   type HaskellSide CChar = Bool

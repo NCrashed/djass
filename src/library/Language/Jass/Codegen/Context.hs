@@ -35,6 +35,9 @@ module Language.Jass.Codegen.Context(
   addNativeMapping,
   getNativesMapping,
   isDefinedNative,
+  -- | Globals helpser
+  addGlobalInitializer,
+  getGlobalsInitializers,
   module SemError
   ) where
   
@@ -72,7 +75,10 @@ data CodegenContext = CodegenContext {
   contextLoopReturn :: Maybe LLVM.Name,
   contextCurrentFunction :: String,
   -- Saves natives placholders to link user implementation later
-  nativesMapping :: NativesMapping
+  nativesMapping :: NativesMapping,
+  -- Global variables initializers, generator uses accumulated instructions to gen special function
+  -- that holds the initializers
+  globalVarsInitializers :: [LLVM.Named LLVM.Instruction]
 }
 
 newContext :: [TypeDef] -> [Callable] -> [Variable] -> CodegenContext
@@ -87,7 +93,8 @@ newContext types callables variables = CodegenContext {
     contextSavedBlocks = [],
     contextLoopReturn = Nothing,
     contextCurrentFunction = "",
-    nativesMapping = HM.empty
+    nativesMapping = HM.empty,
+    globalVarsInitializers = []
   } 
   where
     convertToMap getter ls = zip (fmap getter ls) ls
@@ -262,3 +269,18 @@ addNativeMapping exportName setterName = do
 
 getNativesMapping :: Codegen NativesMapping
 getNativesMapping = fmap nativesMapping get
+
+-- | Stores global variable initial value instructions
+-- The instructions are used to generate special function that
+-- holds all global variables initilizators
+addGlobalInitializer :: [LLVM.Named LLVM.Instruction] -> Codegen ()
+addGlobalInitializer instrs = do
+  context <- get
+  let inits = globalVarsInitializers context
+  put $ context { globalVarsInitializers = inits ++ instrs }
+  
+-- | Returns accumulated global variables initializators
+-- The instructions are used to generate special function that
+-- holds all global variables initilizators
+getGlobalsInitializers :: Codegen [LLVM.Named LLVM.Instruction]
+getGlobalsInitializers = fmap globalVarsInitializers get

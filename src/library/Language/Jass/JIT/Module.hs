@@ -6,15 +6,18 @@ module Language.Jass.JIT.Module(
   , executeMain
   , moduleAssembly
   , ExtractAST(..)
+  , ParsedModule
   , UnlinkedModule
-  , executeJass0
-  , executeJass1
-  , executeJass2
-  , executeJass3
-  , executeJass4
-  , executeJass5
-  , executeJass6
-  , executeJass7
+  , JITModule
+  , withJassJIT
+  , callFunc0
+  , callFunc1
+  , callFunc2
+  , callFunc3
+  , callFunc4
+  , callFunc5
+  , callFunc6
+  , callFunc7
   ) where
 
 import Language.Jass.Utils
@@ -38,7 +41,10 @@ import Control.Monad.IO.Class (liftIO)
 
 -- | Compiled module with unset natives
 data ParsedModule = ParsedModule NativesMapping LLVMAST.Module
+-- | Raised into llvm module
 data UnlinkedModule = UnlinkedModule NativesMap LLVM.Module
+-- | Executing module
+newtype JITModule = JITModule (ExecutableModule JIT)
 type NativesMap = HashMap String (Either LLVMAST.Name (LLVMAST.Name, FunPtr ()))
 
 class ExtractAST a where
@@ -116,45 +122,36 @@ type JassMain = IO ()
 foreign import ccall "dynamic"
   mkJassMain :: FunPtr JassMain -> JassMain  
   
-executeMain :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> ExceptT String IO ()
-executeMain cntx natives module' = executeJass0 cntx natives module' "main" mkJassMain
+executeMain :: JITModule -> ExceptT String IO ()
+executeMain module' = callFunc0 module' "main" mkJassMain
 
-executeJass0 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (IO a)-> IO a) -> ExceptT String IO a
-executeJass1 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (a -> IO b) -> a -> IO b) -> a -> ExceptT String IO b
-executeJass2 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (a -> b -> IO c) -> a -> b -> IO c) -> a -> b -> ExceptT String IO c
-executeJass3 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (a -> b -> c -> IO d) -> a -> b -> c -> IO d) -> a -> b -> c -> ExceptT String IO d
-executeJass4 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (a -> b -> c -> d -> IO e) -> a -> b -> c -> d -> IO e) -> a -> b -> c -> d -> ExceptT String IO e
-executeJass5 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (a -> b -> c -> d -> e -> IO f) -> a -> b -> c -> d -> e -> IO f) -> a -> b -> c -> d -> e -> ExceptT String IO f
-executeJass6 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (a -> b -> c -> d -> e -> f -> IO g) -> a -> b -> c -> d -> e -> f -> IO g) -> a -> b -> c -> d -> e -> f -> ExceptT String IO g
-executeJass7 :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> String -> (FunPtr (a -> b -> c -> d -> e -> f -> g -> IO i) -> a -> b -> c -> d -> e -> f -> g -> IO i) -> a -> b -> c -> d -> e -> f -> g -> ExceptT String IO i
+type GlobalInitializersFunc = IO ()
+foreign import ccall "dynamic"
+  mkGlobalInitializersFunc :: FunPtr GlobalInitializersFunc -> GlobalInitializersFunc  
+  
+executeGlobalInitializers :: JITModule -> ExceptT String IO ()
+executeGlobalInitializers module' = callFunc0 module' globalsInitializerFuncName mkGlobalInitializersFunc
 
-executeJass0 cntx natives module' funcName funcMaker = executeJass cntx natives module' $ \ex -> callFunc0 ex funcName funcMaker  
-executeJass1 cntx natives module' funcName funcMaker arg1 = executeJass cntx natives module' $ \ex -> callFunc1 ex funcName funcMaker arg1
-executeJass2 cntx natives module' funcName funcMaker arg1 arg2 = executeJass cntx natives module' $ \ex -> callFunc2 ex funcName funcMaker arg1 arg2
-executeJass3 cntx natives module' funcName funcMaker arg1 arg2 arg3 = executeJass cntx natives module' $ \ex -> callFunc3 ex funcName funcMaker arg1 arg2 arg3 
-executeJass4 cntx natives module' funcName funcMaker arg1 arg2 arg3 arg4 = executeJass cntx natives module' $ \ex -> callFunc4 ex funcName funcMaker arg1 arg2 arg3 arg4
-executeJass5 cntx natives module' funcName funcMaker arg1 arg2 arg3 arg4 arg5 = executeJass cntx natives module' $ \ex -> callFunc5 ex funcName funcMaker arg1 arg2 arg3 arg4 arg5
-executeJass6 cntx natives module' funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6 = executeJass cntx natives module' $ \ex -> callFunc6 ex funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6
-executeJass7 cntx natives module' funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6 arg7 = executeJass cntx natives module' $ \ex -> callFunc7 ex funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6 arg7
-            
-executeJass :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> (ExecutableModule JIT -> ExceptT String IO a) -> ExceptT String IO a 
-executeJass cntx natives (UnlinkedModule nativesMap llvmModule) action = do
+withJassJIT :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> (JITModule -> ExceptT String IO a) -> ExceptT String IO a
+withJassJIT cntx natives (UnlinkedModule nativesMap llvmModule) action = do
   checkNativesName (fst <$> natives) nativesMap
   let bindedNatives = foldl (\mp f -> f mp) nativesMap $ fmap (uncurry nativesMapBind) natives
   case isAllNativesBinded bindedNatives of
       Just name -> throwE $ "Native '" ++ name ++ "' isn't binded!"
       Nothing -> liftExcept $ withJIT cntx 3 $ \jit -> withModuleInEngine jit llvmModule $ \exModule -> runExceptT $ do
-                  mapM_ (uncurry $ callNativeBinder exModule) $ getNativesBindings bindedNatives
-                  action exModule
+                    let jitModule = JITModule exModule
+                    mapM_ (uncurry $ callNativeBinder exModule) $ getNativesBindings bindedNatives
+                    executeGlobalInitializers jitModule
+                    action jitModule
 
-callFunc0 :: ExecutableModule JIT -> String -> (FunPtr (IO a) -> IO a) -> ExceptT String IO a
-callFunc1 :: ExecutableModule JIT -> String -> (FunPtr (a -> IO b) -> a -> IO b) -> a -> ExceptT String IO b
-callFunc2 :: ExecutableModule JIT -> String -> (FunPtr (a -> b -> IO c) -> a -> b -> IO c) -> a -> b -> ExceptT String IO c
-callFunc3 :: ExecutableModule JIT -> String -> (FunPtr (a -> b -> c -> IO d) -> a -> b -> c -> IO d) -> a -> b -> c -> ExceptT String IO d
-callFunc4 :: ExecutableModule JIT -> String -> (FunPtr (a -> b -> c -> d -> IO e) -> a -> b -> c -> d -> IO e) -> a -> b -> c -> d -> ExceptT String IO e
-callFunc5 :: ExecutableModule JIT -> String -> (FunPtr (a -> b -> c -> d -> e -> IO f) -> a -> b -> c -> d -> e -> IO f) -> a -> b -> c -> d -> e -> ExceptT String IO f
-callFunc6 :: ExecutableModule JIT -> String -> (FunPtr (a -> b -> c -> d -> e -> f -> IO g) -> a -> b -> c -> d -> e -> f -> IO g) -> a -> b -> c -> d -> e -> f -> ExceptT String IO g
-callFunc7 :: ExecutableModule JIT -> String -> (FunPtr (a -> b -> c -> d -> e -> f -> g -> IO i) -> a -> b -> c -> d -> e -> f -> g -> IO i) -> a -> b -> c -> d -> e -> f -> g -> ExceptT String IO i
+callFunc0 :: JITModule -> String -> (FunPtr (IO a) -> IO a) -> ExceptT String IO a
+callFunc1 :: JITModule -> String -> (FunPtr (a -> IO b) -> a -> IO b) -> a -> ExceptT String IO b
+callFunc2 :: JITModule -> String -> (FunPtr (a -> b -> IO c) -> a -> b -> IO c) -> a -> b -> ExceptT String IO c
+callFunc3 :: JITModule -> String -> (FunPtr (a -> b -> c -> IO d) -> a -> b -> c -> IO d) -> a -> b -> c -> ExceptT String IO d
+callFunc4 :: JITModule -> String -> (FunPtr (a -> b -> c -> d -> IO e) -> a -> b -> c -> d -> IO e) -> a -> b -> c -> d -> ExceptT String IO e
+callFunc5 :: JITModule -> String -> (FunPtr (a -> b -> c -> d -> e -> IO f) -> a -> b -> c -> d -> e -> IO f) -> a -> b -> c -> d -> e -> ExceptT String IO f
+callFunc6 :: JITModule -> String -> (FunPtr (a -> b -> c -> d -> e -> f -> IO g) -> a -> b -> c -> d -> e -> f -> IO g) -> a -> b -> c -> d -> e -> f -> ExceptT String IO g
+callFunc7 :: JITModule -> String -> (FunPtr (a -> b -> c -> d -> e -> f -> g -> IO i) -> a -> b -> c -> d -> e -> f -> g -> IO i) -> a -> b -> c -> d -> e -> f -> g -> ExceptT String IO i
 
 callFunc0 exModule funcName funcMaker = callFunc exModule funcName $ \ptr -> liftIO $ funcMaker $ castFunPtr ptr
 callFunc1 exModule funcName funcMaker arg1 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1
@@ -165,8 +162,8 @@ callFunc5 exModule funcName funcMaker arg1 arg2 arg3 arg4 arg5 = callFunc exModu
 callFunc6 exModule funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1 arg2 arg3 arg4 arg5 arg6
 callFunc7 exModule funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6 arg7 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1 arg2 arg3 arg4 arg5 arg6 arg7
 
-callFunc :: ExecutableModule JIT -> String -> (FunPtr () -> ExceptT String IO a) -> ExceptT String IO a 
-callFunc exModule funcName action = do
+callFunc :: JITModule -> String -> (FunPtr () -> ExceptT String IO a) -> ExceptT String IO a 
+callFunc (JITModule exModule) funcName action = do
   mptr <- liftIO $ getFunction exModule (Name funcName)
   case mptr of
     Nothing -> throwE $ "Cannot find "++ funcName ++" function in jass module!"

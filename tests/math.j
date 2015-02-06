@@ -46,3 +46,7 @@ function fact takes integer n returns integer
 	endloop
 	return prod
 endfunction
+
+function factAndFib takes integer n returns integer
+	return fib(n) + fact(n)
+endfunction

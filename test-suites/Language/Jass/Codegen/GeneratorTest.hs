@@ -24,9 +24,12 @@ foreign import ccall "wrapper" mkNativeWriteln :: NativeWriteln -> IO (FunPtr Na
 
 makeNativeTable :: IO [(String, FunPtr ())]
 makeNativeTable = sequence [("writeln",) . castFunPtr <$> mkNativeWriteln nativeWriteln]
-     
-checkJassFile :: FilePath -> (Context -> UnlinkedModule -> ExceptT String IO ()) -> Assertion
-checkJassFile path action = withContext $ \cntx -> do
+
+makeEmptyNativeTable :: IO [(String, FunPtr ())]
+makeEmptyNativeTable = return []
+
+checkJassFile :: FilePath -> IO [(String, FunPtr ())] -> (JITModule -> ExceptT String IO ()) -> Assertion
+checkJassFile path nativeTable action = withContext $ \cntx -> do
   res <- runExceptT $ loadJassModuleFromFile path
   case res of
     Left err -> assertFailure err
@@ -37,17 +40,16 @@ checkJassFile path action = withContext $ \cntx -> do
         optimizeModule llvmModule
         putStrLn' "Optimized: "
         putStrLn' =<< moduleAssembly llvmModule
-        action cntx llvmModule
+        tbl <- liftIO nativeTable
+        withJassJIT cntx tbl llvmModule $ \jit -> action jit
       case res2 of
         Left err -> assertFailure err
         Right _ -> return ()
   where
   putStrLn' = liftIO . putStrLn
 
-checkHello :: Context -> UnlinkedModule -> ExceptT String IO ()
-checkHello cntx llvmModule = do
-  table <- liftIO makeNativeTable
-  executeMain cntx table llvmModule
+checkHello :: JITModule -> ExceptT String IO ()
+checkHello = executeMain
   
 type SummFunc = CInt -> CInt -> IO CInt
 foreign import ccall "dynamic"
@@ -84,9 +86,13 @@ foreign import ccall "dynamic"
 type FactFunc = CInt -> IO CInt
 foreign import ccall "dynamic"
   mkFactFunc :: FunPtr FactFunc -> FactFunc
-             
-checkMath :: Context -> UnlinkedModule -> ExceptT String IO ()
-checkMath cntx llvmModule = do
+
+type FactAndFibFunc = CInt -> IO CInt
+foreign import ccall "dynamic"
+  mkFactAndFibFunc :: FunPtr FactAndFibFunc -> FactAndFibFunc
+              
+checkMath :: JITModule -> ExceptT String IO ()
+checkMath jit = do
   summ1 <- exec2 "summ" mkSummFunc 1 1
   liftIO $ summ1 @?= 2 
   summ2 <- exec2 "summ" mkSubsFunc 42 2
@@ -121,12 +127,42 @@ checkMath cntx llvmModule = do
   fact2 <- exec1 "fact" mkFactFunc 11
   liftIO $ fact2 @?= 39916800
   
+  factfib1 <- exec1 "factAndFib" mkFactAndFibFunc 2
+  liftIO $ factfib1 @?= 3
+  factfib2 <- exec1 "factAndFib" mkFactAndFibFunc 11
+  liftIO $ factfib2 @?= 39916855
   where  
-    exec1 = executeJass1 cntx [] llvmModule
-    exec2 = executeJass2 cntx [] llvmModule
+    exec1 = callFunc1 jit
+    exec2 = callFunc2 jit
+
+type GetGlobalIFunc = IO CInt
+foreign import ccall "dynamic"
+  mkGetGlobalIFunc :: FunPtr GetGlobalIFunc -> GetGlobalIFunc
+
+type SetGlobalIFunc = CInt -> IO ()
+foreign import ccall "dynamic"
+  mkSetGlobalIFunc :: FunPtr SetGlobalIFunc -> SetGlobalIFunc
+
+type GetGlobalJFunc = IO CString
+foreign import ccall "dynamic"
+  mkGetGlobalJFunc :: FunPtr GetGlobalJFunc -> GetGlobalJFunc
+     
+checkGlobal :: JITModule -> ExceptT String IO ()
+checkGlobal jit = do
+  globalI1 <- exec0 "getGlobalI" mkGetGlobalIFunc
+  liftIO $ globalI1 @?= 42
+  exec1 "setGlobalI" mkSetGlobalIFunc 23
+  globalI2 <- exec0 "getGlobalI" mkGetGlobalIFunc
+  liftIO $ globalI2 @?= 23
+  globalJ2 <- fromJass =<< exec0 "getGlobalJ" mkGetGlobalJFunc
+  liftIO $ globalJ2 @?= "Hello!"
+  where
+    exec0 = callFunc0 jit
+    exec1 = callFunc1 jit
     
 simpleCodegenTest :: TestTree
 simpleCodegenTest = testGroup "jass helloworld"
-  [ testCase "hello.j" $ checkJassFile "tests/hello.j" checkHello,
-    testCase "math.j" $ checkJassFile "tests/math.j" checkMath
+  [ testCase "hello.j" $ checkJassFile "tests/hello.j" makeNativeTable checkHello,
+    testCase "math.j" $ checkJassFile "tests/math.j" makeEmptyNativeTable checkMath,
+    testCase "global.j" $ checkJassFile "tests/global.j" makeEmptyNativeTable checkGlobal
   ]
