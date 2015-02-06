@@ -79,14 +79,10 @@ instance LLVMDefinition Callable where
 
       genLocal' jt varName preInstr val nextBlock acc = do  
         llvmType <- toLLVMType jt
-        let valName = Name ("local_" ++ varName)
-        allocName <- generateName
-        let ptrRef = LocalReference (ptr llvmType) allocName
         let newBlock = BasicBlock (localBlockName varName) 
                       (preInstr ++ 
-                      [allocName := Alloca llvmType Nothing 0 [],
-                       Do $ Store False ptrRef val Nothing 0 [],
-                       valName := Load False ptrRef Nothing 0 []])
+                      [Name varName := Alloca llvmType Nothing 0 [],
+                       Do $ Store False (LocalReference (ptr llvmType) (Name varName)) val Nothing 0 []])
                       (Do $ Br nextBlock [])
         return (localBlockName varName, newBlock:acc)
         

@@ -212,7 +212,7 @@ purgeBlocks :: Codegen [LLVM.BasicBlock]
 purgeBlocks = do
   context <- get
   let blocks = contextSavedBlocks context
-  put $ context { contextSavedBlocks = [], contextLoopReturn = Nothing }
+  put $ context { contextSavedBlocks = [] }
   return blocks 
   
 saveLoopReturn :: LLVM.Name -> Codegen ()
@@ -233,7 +233,7 @@ getCurrentFunction = fmap contextCurrentFunction get
 setCurrentFunction :: String -> Codegen ()
 setCurrentFunction name = do
   context <- get
-  put $ context { contextCurrentFunction = name }
+  put $ context { contextCurrentFunction = name, contextLoopReturn = Nothing }
   
 addNativeMapping :: String -> LLVM.Name -> Codegen ()
 addNativeMapping exportName setterName = do

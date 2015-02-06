@@ -80,7 +80,11 @@ foreign import ccall "dynamic"
 type FibFunc = CInt -> IO CInt
 foreign import ccall "dynamic"
   mkFibFunc :: FunPtr FibFunc -> FibFunc
-           
+
+type FactFunc = CInt -> IO CInt
+foreign import ccall "dynamic"
+  mkFactFunc :: FunPtr FactFunc -> FactFunc
+             
 checkMath :: Context -> UnlinkedModule -> ExceptT String IO ()
 checkMath cntx llvmModule = do
   summ1 <- exec2 "summ" mkSummFunc 1 1
@@ -111,6 +115,11 @@ checkMath cntx llvmModule = do
   liftIO $ fib1 @?= 1
   fib2 <- exec1 "fib" mkFibFunc 11
   liftIO $ fib2 @?= 55
+  
+  fact1 <- exec1 "fact" mkFactFunc 2
+  liftIO $ fact1 @?= 2
+  fact2 <- exec1 "fact" mkFactFunc 11
+  liftIO $ fact2 @?= 39916800
   
   where  
     exec1 = executeJass1 cntx [] llvmModule

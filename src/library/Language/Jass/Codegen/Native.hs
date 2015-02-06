@@ -39,7 +39,7 @@ generateNativeSupport funcName params retType = do
       return $ globalVariableDefaults {
         name = nativeVarName,
         Glob.type' = varType,
-        initializer = Just $ Null $ varType
+        initializer = Just $ Null varType
       }
     
     globalNativeSetter :: Codegen LLVM.Global

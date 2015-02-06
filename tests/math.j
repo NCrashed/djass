@@ -35,3 +35,14 @@ function fib takes integer n returns integer
   	return fib(n-2) + fib(n-1)
   endif
 endfunction
+
+function fact takes integer n returns integer
+	local integer prod = 1
+	local integer i = 1
+	loop
+	  exitwhen i > n
+		set prod = prod * i
+		set i = i + 1
+	endloop
+	return prod
+endfunction
