@@ -1,38 +1,61 @@
+{-# LANGUAGE TypeFamilies, TypeSynonymInstances, FlexibleInstances #-}
 -- | Unfinished module that should simplify interfacing with jass code
-{-# LANGUAGE TypeOperators, TypeFamilies, TypeSynonymInstances, FlexibleInstances, UndecidableInstances, MultiParamTypeClasses, FunctionalDependencies #-}
 module Language.Jass.JIT.Calling(
-  (:->)(..),
-  ConvertToJass,
-  ToJassConv(..),
-  FromJassConv(..),
-  ConvertToJassArguments,
-  ReturnType,
-  ApplyJassArgs(..)
+    ToJassConv(..)
+  , FromJassConv(..)
+  , callMain
+  , callFunc0
+  , callFunc1
+  , callFunc2
+  , callFunc3
+  , callFunc4
+  , callFunc5
+  , callFunc6
+  , callFunc7
   ) where
 
+import Language.Jass.JIT.Module
+import GHC.Float
+import Foreign.Ptr
 import Foreign.C.Types
 import Foreign.C.String
-import GHC.Float
+import Control.Monad.Trans.Except
 import Control.Monad.IO.Class
+import LLVM.General.ExecutionEngine
+import LLVM.General.AST
+  
+callFunc0 :: JITModule -> String -> (FunPtr (IO a) -> IO a) -> ExceptT String IO a
+callFunc1 :: JITModule -> String -> (FunPtr (a -> IO b) -> a -> IO b) -> a -> ExceptT String IO b
+callFunc2 :: JITModule -> String -> (FunPtr (a -> b -> IO c) -> a -> b -> IO c) -> a -> b -> ExceptT String IO c
+callFunc3 :: JITModule -> String -> (FunPtr (a -> b -> c -> IO d) -> a -> b -> c -> IO d) -> a -> b -> c -> ExceptT String IO d
+callFunc4 :: JITModule -> String -> (FunPtr (a -> b -> c -> d -> IO e) -> a -> b -> c -> d -> IO e) -> a -> b -> c -> d -> ExceptT String IO e
+callFunc5 :: JITModule -> String -> (FunPtr (a -> b -> c -> d -> e -> IO f) -> a -> b -> c -> d -> e -> IO f) -> a -> b -> c -> d -> e -> ExceptT String IO f
+callFunc6 :: JITModule -> String -> (FunPtr (a -> b -> c -> d -> e -> f -> IO g) -> a -> b -> c -> d -> e -> f -> IO g) -> a -> b -> c -> d -> e -> f -> ExceptT String IO g
+callFunc7 :: JITModule -> String -> (FunPtr (a -> b -> c -> d -> e -> f -> g -> IO i) -> a -> b -> c -> d -> e -> f -> g -> IO i) -> a -> b -> c -> d -> e -> f -> g -> ExceptT String IO i
 
--- | Jass function, same as (->)
-data a :-> b = a :-> b
+callFunc0 exModule funcName funcMaker = callFunc exModule funcName $ \ptr -> liftIO $ funcMaker $ castFunPtr ptr
+callFunc1 exModule funcName funcMaker arg1 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1
+callFunc2 exModule funcName funcMaker arg1 arg2 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1 arg2
+callFunc3 exModule funcName funcMaker arg1 arg2 arg3 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1 arg2 arg3
+callFunc4 exModule funcName funcMaker arg1 arg2 arg3 arg4 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1 arg2 arg3 arg4
+callFunc5 exModule funcName funcMaker arg1 arg2 arg3 arg4 arg5 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1 arg2 arg3 arg4 arg5
+callFunc6 exModule funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1 arg2 arg3 arg4 arg5 arg6
+callFunc7 exModule funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6 arg7 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1 arg2 arg3 arg4 arg5 arg6 arg7
 
-type family ConvertToJass a where
-  ConvertToJass (a :-> b) = JassSide a -> ConvertToJass b
-  ConvertToJass a = IO (JassSide a)
+callFunc :: JITModule -> String -> (FunPtr () -> ExceptT String IO a) -> ExceptT String IO a 
+callFunc (JITModule exModule) funcName action = do
+  mptr <- liftIO $ getFunction exModule (Name funcName)
+  case mptr of
+    Nothing -> throwE $ "Cannot find "++ funcName ++" function in jass module!"
+    Just ptr -> action ptr
 
-type family ConvertToJassArguments a where
-  ConvertToJassArguments (a :-> b) = a :-> ConvertToJassArguments b
-  ConvertToJassArguments a = ()
+type JassMain = IO ()
+foreign import ccall "dynamic"
+  mkJassMain :: FunPtr JassMain -> JassMain  
+  
+callMain :: JITModule -> ExceptT String IO ()
+callMain module' = callFunc0 module' "main" mkJassMain
 
-type family ReturnType a where
-  ReturnType (a -> b) = ReturnType b
-  ReturnType a = a
-
-class ToJassConv a => ApplyJassArgs a b c | b -> c where
-  applyJassArgs :: (JassSide a -> b) -> (a :-> c) -> ReturnType b
-    
 -- | Describes convertion to Jass runtime represenation of types
 class ToJassConv a where
   type JassSide a :: *

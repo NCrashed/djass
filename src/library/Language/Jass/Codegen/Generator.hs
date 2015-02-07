@@ -1,6 +1,5 @@
 module Language.Jass.Codegen.Generator(
   generateLLVM,
-  globalsInitializerFuncName,
   NativesMapping
   ) where
   
@@ -12,6 +11,9 @@ import Language.Jass.Codegen.Native
 import Language.Jass.Parser.AST as AST
 import Language.Jass.Semantic.Callable
 import Language.Jass.Semantic.Variable
+import Language.Jass.Runtime.String
+import Language.Jass.Runtime.Memory
+import Language.Jass.Runtime.Globals
 import LLVM.General.AST as LLVM
 import LLVM.General.AST.Global as Global
 import LLVM.General.AST.Constant
@@ -19,26 +21,28 @@ import LLVM.General.AST.Type
 import LLVM.General.AST.Linkage
 import Control.Monad
 import Control.Monad.Error
+import Control.Applicative
 
 generateLLVM :: [TypeDef] -> [Callable] -> [Variable] -> Either SemanticError (NativesMapping, Module)
 generateLLVM types callables variables = runCodegen context $ do
-  --addRuntimeDefenitions
-  --mapM_ genLLVM $ reverse types
+  -- runtime
+  addRuntimeDefs
+  -- variables support
   mapM_ genLLVM $ reverse variables
-  addDefinition =<< genGlobalInitializersFunc
+  addDefinition =<< genGlobalInitializersFunc <$> getGlobalsInitializers
+  -- user functions
   mapM_ genLLVM $ reverse callables
+  -- collect result
   mapping <- getNativesMapping
   module' <- getModule
   return (mapping, module')
   where context = newContext types callables variables
-  
+        addRuntimeDefs = do
+          mapM_ addDefinition getAllocMemoryDefs 
+          mapM_ addDefinition getStringUtilityDefs
+          
 class LLVMDefinition a where
   genLLVM :: a -> Codegen ()  
-
---instance LLVMDefinition TypeDef where
---  genLLVM (TypeDef _ name tp) 
---    | isBasicType tp = return $ TypeDefinition (Name name) $ Just (getBasicType tp)
---    | JArray elt <- tp = return $ TypeDefinition (Name name) $ Just $ ArrayType arraySize (getBasicType elt) 
 
 instance LLVMDefinition Variable where
   genLLVM (VarGlobal (GlobalVar _ isConst False jt varName Nothing)) = do
@@ -70,24 +74,6 @@ genGlobal jt varName isConst instrs initVal = do
     Global.type' = llvmType,
     initializer = initVal,
     linkage = Private -- | TODO: when would linking modules, check this
-  }
-  
--- | Returns name of function that sets initial values to all globals
-globalsInitializerFuncName :: String
-globalsInitializerFuncName = "__jass__initGlobals"
-
--- | Generates function that sets initial values of global variables
-genGlobalInitializersFunc :: Codegen Definition
-genGlobalInitializersFunc = do
-  initInstrs <- getGlobalsInitializers
-  return $ GlobalDefinition $ functionDefaults {
-      name = Name globalsInitializerFuncName
-    , parameters = ([], False)
-    , returnType = VoidType
-    , basicBlocks = [BasicBlock (Name "entry_block") 
-        initInstrs
-        (Do $ Ret Nothing [])
-      ]
   }
   
 instance LLVMDefinition Callable where
@@ -154,12 +140,3 @@ convParam :: AST.Parameter -> Codegen LLVM.Parameter
 convParam (AST.Parameter _ pt pname) = do
   llvmt <- toLLVMType pt
   return $ LLVM.Parameter llvmt (Name pname) []
-        
---addRuntimeDefenitions :: Codegen ()
---addRuntimeDefenitions = 
---  addDefinition $ LLVM.GlobalDefinition $ functionDefaults {
---      name = Name "malloc"
---    , parameters = ([LLVM.Parameter i32 (Name "size") []], False)
---    , returnType = ptr i8
---    , basicBlocks = []
---  }

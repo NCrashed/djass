@@ -1,8 +1,9 @@
 {-# LANGUAGE TupleSections, TypeOperators #-}
 module Language.Jass.Codegen.GeneratorTest where
 
-import Language.Jass.JIT.Module
+import Language.Jass.JIT.Executing
 import Language.Jass.JIT.Calling
+import Language.Jass.JIT.Module
 import LLVM.General.Context
 import LLVM.General.PrettyPrint
 import Test.Tasty
@@ -49,7 +50,7 @@ checkJassFile path nativeTable action = withContext $ \cntx -> do
   putStrLn' = liftIO . putStrLn
 
 checkHello :: JITModule -> ExceptT String IO ()
-checkHello = executeMain
+checkHello = callMain
   
 type SummFunc = CInt -> CInt -> IO CInt
 foreign import ccall "dynamic"
@@ -159,10 +160,26 @@ checkGlobal jit = do
   where
     exec0 = callFunc0 jit
     exec1 = callFunc1 jit
+
+type TestStrings = CString -> IO CString
+foreign import ccall "dynamic"
+  mkTestStrings :: FunPtr TestStrings -> TestStrings
+     
+checkString :: JITModule -> ExceptT String IO ()
+checkString jit = do
+  res1 <-fromJass =<< exec1 "testStrings" mkTestStrings =<< toJass "Hello, "
+  liftIO $ res1 @?= "Hello, World!"
+  res2 <-fromJass =<< exec1 "testStrings" mkTestStrings =<< toJass "Bye, "
+  liftIO $ res2 @?= "Bye, Dude!"
+  res3 <-fromJass =<< exec1 "testStrings" mkTestStrings =<< toJass "Something"
+  liftIO $ res3 @?= "I don't know that input!"
+  where
+    exec1 = callFunc1 jit
     
 simpleCodegenTest :: TestTree
 simpleCodegenTest = testGroup "jass helloworld"
   [ testCase "hello.j" $ checkJassFile "tests/hello.j" makeNativeTable checkHello,
     testCase "math.j" $ checkJassFile "tests/math.j" makeEmptyNativeTable checkMath,
-    testCase "global.j" $ checkJassFile "tests/global.j" makeEmptyNativeTable checkGlobal
+    testCase "global.j" $ checkJassFile "tests/global.j" makeEmptyNativeTable checkGlobal,
+    testCase "string.j" $ checkJassFile "tests/string.j" makeEmptyNativeTable checkString
   ]

@@ -1,3 +1,4 @@
+{-# LANGUAGE MultiWayIf #-}
 module Language.Jass.Codegen.Expression(
     genLLVMExpression
   ) where
@@ -5,6 +6,7 @@ module Language.Jass.Codegen.Expression(
 import Language.Jass.Parser.AST as AST
 import Language.Jass.Codegen.Context
 import Language.Jass.Codegen.Type
+import Language.Jass.Runtime.String
 import LLVM.General.AST as LLVM
 import qualified LLVM.General.AST.IntegerPredicate as LLVMI
 import qualified LLVM.General.AST.FloatingPointPredicate as LLVMF
@@ -28,6 +30,28 @@ genLLVMExpression (BinaryExpression _ op left right) = do
   mgeneralType <- getGeneralType leftJassType rightJassType
   case mgeneralType of
     Nothing -> throwError $ strMsg $ "ICE: cannot use types " ++ show leftJassType ++ " and " ++ show rightJassType ++ " at " ++ show op
+    Just JString -> if
+      | op == Summ -> do
+        let strAddCall = [opName := Call False C [] 
+                         (Right $ ConstantOperand $ GlobalReference (ptr i8) (Name strAddFuncName)) 
+                         [(LocalReference (ptr i8) leftNameRaw, []), (LocalReference (ptr i8) rightNameRaw, [])] [] []]
+        return (opName, leftInstr ++ rightInstr ++ strAddCall)
+      | isRelationalOperator op -> do
+        cmpName <- generateName "strcmp"
+        let strCmpCall = [cmpName := Call False C [] 
+                         (Right $ ConstantOperand $ GlobalReference i32 (Name strCmpFunctionName)) 
+                         [(LocalReference (ptr i8) leftNameRaw, []), (LocalReference (ptr i8) rightNameRaw, [])] [] []]
+        let stringRelationInstrs llvmOp constVal = [opName := LLVM.ICmp llvmOp (LocalReference i32 cmpName) (ConstantOperand $ Const.Int 32 constVal) []]
+        let strRelInstrs = case op of
+                            Equal -> stringRelationInstrs LLVMI.EQ 0
+                            NotEqual -> stringRelationInstrs LLVMI.NE 0
+                            Greater -> stringRelationInstrs LLVMI.EQ 1
+                            Less -> stringRelationInstrs LLVMI.EQ (-1)
+                            GreaterEqual -> stringRelationInstrs LLVMI.NE (-1)
+                            LessEqual -> stringRelationInstrs LLVMI.NE 1
+                            _ -> error $ "ICE: unknown relational operator " ++ show op
+        return (opName, leftInstr ++ rightInstr ++ strCmpCall ++ strRelInstrs)
+      | otherwise -> throwError $ strMsg $ "ICE: unsupported operator " ++ show op ++ " for strings"
     Just generalType -> do 
       (leftName, leftConvInstr) <- genConvertion leftJassType generalType leftNameRaw
       (rightName, rightConvInstr) <- genConvertion rightJassType generalType rightNameRaw
@@ -107,24 +131,31 @@ genBinaryOp AST.And res left right = LLVM.And (LocalReference res left) (LocalRe
 genBinaryOp AST.Or res left right = LLVM.Or (LocalReference res left) (LocalReference res right) []
 genBinaryOp AST.Equal res left right -- | TODO: string compare
   | isIntegralType res = LLVM.ICmp LLVMI.EQ (LocalReference res left) (LocalReference res right) []
+  | isStringType res = error "ICE: equality op generation for string malformed call"
   | otherwise = LLVM.FCmp LLVMF.OEQ (LocalReference res left) (LocalReference res right) [] 
 genBinaryOp AST.NotEqual res left right 
   | isIntegralType res = LLVM.ICmp LLVMI.NE (LocalReference res left) (LocalReference res right) []
+  | isStringType res = error "ICE: not-equality op generation for string malformed call"
   | otherwise = LLVM.FCmp LLVMF.ONE (LocalReference res left) (LocalReference res right) [] 
 genBinaryOp AST.GreaterEqual res left right 
   | isIntegralType res = LLVM.ICmp LLVMI.UGE (LocalReference res left) (LocalReference res right) []
+  | isStringType res = error "ICE: greater equal op generation for string malformed call"
   | otherwise = LLVM.FCmp LLVMF.OGE (LocalReference res left) (LocalReference res right) [] 
 genBinaryOp AST.LessEqual res left right 
   | isIntegralType res = LLVM.ICmp LLVMI.ULE (LocalReference res left) (LocalReference res right) []
+  | isStringType res = error "ICE: less equal op generation for string malformed call"
   | otherwise = LLVM.FCmp LLVMF.OLE (LocalReference res left) (LocalReference res right) [] 
 genBinaryOp AST.Greater res left right 
   | isIntegralType res = LLVM.ICmp LLVMI.UGT (LocalReference res left) (LocalReference res right) []
+  | isStringType res = error "ICE: greater op generation for string malformed call"
   | otherwise = LLVM.FCmp LLVMF.OGT (LocalReference res left) (LocalReference res right) [] 
 genBinaryOp AST.Less res left right 
   | isIntegralType res = LLVM.ICmp LLVMI.ULT (LocalReference res left) (LocalReference res right) []
+  | isStringType res = error "ICE: less op generation for string malformed call"
   | otherwise = LLVM.FCmp LLVMF.OLT (LocalReference res left) (LocalReference res right) [] 
 genBinaryOp AST.Summ rest left right 
   | isIntegralType rest = LLVM.Add False False (LocalReference rest left) (LocalReference rest right) []
+  | isStringType rest = error "ICE: summ op generation for string malformed call"
   | otherwise = LLVM.FAdd fastMathflags (LocalReference rest left) (LocalReference rest right) []
 genBinaryOp AST.Substract rest left right 
   | isIntegralType rest = LLVM.Sub False False (LocalReference rest left) (LocalReference rest right) []

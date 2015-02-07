@@ -11,9 +11,9 @@ module Language.Jass.Codegen.Type(
   , getFunctionArgumentsTypes
   , getFunctionReturnType
   , isIntegralType
+  , isStringType
   , getReference
   , module SemType
-  , mallocType
   ) where
 
 import Language.Jass.JassType
@@ -115,6 +115,7 @@ isIntegralType :: LLVM.Type -> Bool
 isIntegralType (IntegerType _) = True
 isIntegralType _ = False
 
--- | Type of C malloc function
-mallocType :: LLVM.Type
-mallocType = LLVM.FunctionType (ptr i8) [i32] False
+-- | Returns true if type is represents string type
+isStringType :: LLVM.Type -> Bool
+isStringType (PointerType (IntegerType 8) _) = True
+isStringType _ = False
