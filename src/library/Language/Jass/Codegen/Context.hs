@@ -1,47 +1,51 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Language.Jass.Codegen.Context(
   -- | Context core
-  CodegenContext(..),
-  Codegen,
-  runCodegen,
-  newContext,
+    CodegenContext(..)
+  , Codegen
+  , runCodegen
+  , newContext
   -- | Getting info from context
-  getType,
-  getCallable,
-  getVariable,
-  addDefinition,
-  getModule,
-  getCurrentFunction,
-  setCurrentFunction,
+  , getType
+  , getCallable
+  , getVariable
+  , addDefinition
+  , getModule
+  , getCurrentFunction
+  , setCurrentFunction
   -- | Local variables
-  addLocalVar,
-  purgeLocalVars,
-  isParameter,
+  , addLocalVar
+  , purgeLocalVars
+  , isParameter
   -- | Name generation
-  generateName,
-  generateGlobalName,
-  purgeNames,
+  , generateName
+  , generateGlobalName
+  , purgeNames
   -- | Blocks stack
-  pushNewBlock,
-  pushBlocks,
-  appendCurrentBlock,
-  finishCurrentBlock,
-  purgeBlocks,
+  , pushNewBlock
+  , pushBlocks
+  , appendCurrentBlock
+  , finishCurrentBlock
+  , purgeBlocks
   -- | Loop utilities
-  saveLoopReturn,
-  getLoopReturn,
+  , saveLoopReturn
+  , getLoopReturn
   -- | Natives mapping
-  NativesMapping,
-  addNativeMapping,
-  getNativesMapping,
-  isDefinedNative,
+  , NativesMapping
+  , addNativeMapping
+  , getNativesMapping
+  , isDefinedNative
   -- | Globals helpser
-  addGlobalInitializer,
-  getGlobalsInitializers,
+  , addGlobalInitializer
+  , getGlobalsInitializers
   -- | Epilogue utilitites
-  addEpilogueInstructions,
-  getEpilogueInstructions,
-  module SemError
+  , addEpilogueInstructions
+  , getEpilogueInstructions
+  -- | Type ids api
+  , registerCustomType
+  , getCustomTypeId
+  , getCustomTypeFromId
+  , module SemError
   ) where
   
 import Data.HashMap.Strict as HM
@@ -83,7 +87,11 @@ data CodegenContext = CodegenContext {
   -- that holds the initializers
   globalVarsInitializers :: [LLVM.Named LLVM.Instruction],
   -- Accumulator that holds instructions (usually memory freeing calls) to put at the end of function
-  epilogueInstructions :: [LLVM.Named LLVM.Instruction]
+  epilogueInstructions :: [LLVM.Named LLVM.Instruction],
+  -- Custom type indexing
+  type2id :: HashMap String Int,
+  id2type :: HashMap Int String,
+  typeIdCounter :: Int
 }
 
 newContext :: [TypeDef] -> [Callable] -> [Variable] -> CodegenContext
@@ -100,7 +108,10 @@ newContext types callables variables = CodegenContext {
     contextCurrentFunction = "",
     nativesMapping = HM.empty,
     globalVarsInitializers = [],
-    epilogueInstructions = []
+    epilogueInstructions = [],
+    type2id = HM.empty,
+    id2type = HM.empty,
+    typeIdCounter = 1
   } 
   where
     convertToMap getter ls = zip (fmap getter ls) ls
@@ -304,3 +315,35 @@ addEpilogueInstructions instrs = do
 -- | Returns accumulated epilogure instructions
 getEpilogueInstructions :: Codegen [LLVM.Named LLVM.Instruction]
 getEpilogueInstructions = fmap epilogueInstructions get
+
+-- | Generates index for custom type
+registerCustomType :: String -> Codegen ()
+registerCustomType s = do
+  context <- get
+  let table = type2id context
+  case HM.lookup s table of
+    Just _ -> throwError $ strMsg $ "ICE: Tried to register existing type: " ++ s
+    Nothing -> do
+      let i = typeIdCounter context
+      let table' = id2type context
+      put $ context {
+        type2id = HM.insert s i table,
+        id2type = HM.insert i s table',
+        typeIdCounter = i + 1
+      }
+
+-- | Tries to find id of custom type
+getCustomTypeId :: String -> Codegen Int
+getCustomTypeId n = do
+  table <- type2id <$> get
+  case HM.lookup n table of
+    Nothing -> throwError $ strMsg $ "ICE: Type " ++ n ++ " isn't registered!"
+    Just i -> return i
+
+-- | Tries to find custom type by id
+getCustomTypeFromId :: Int -> Codegen String
+getCustomTypeFromId i = do
+  table <- id2type <$> get
+  case HM.lookup i table of
+    Nothing -> throwError $ strMsg $ "ICE: Cannot find type by id: " ++ show i
+    Just n -> return n

@@ -3,6 +3,10 @@ module Language.Jass.Codegen.Helpers(
   , constInt
   , jump
   , bitcast
+  , getElementPtr
+  , ret
+  , retVoid
+  , load
   ) where
   
 import LLVM.General.AST
@@ -25,3 +29,19 @@ jump n = Br n []
 -- | Alias for BitCast
 bitcast :: Operand -> Type -> Instruction
 bitcast op t = BitCast op t []
+
+-- | Alias for GetElementPtr
+getElementPtr :: Operand -> [Operand] -> Instruction
+getElementPtr op is = GetElementPtr True op is []
+
+-- | Alias for Ret
+ret :: Operand -> Terminator
+ret op = Ret (Just op) []
+
+-- | Alias for Ret Nothing
+retVoid :: Terminator
+retVoid = Ret Nothing []
+
+-- | Alias for load
+load :: Operand -> Instruction
+load op = Load False op Nothing 0 []

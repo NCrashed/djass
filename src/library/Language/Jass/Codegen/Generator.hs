@@ -15,6 +15,7 @@ import Language.Jass.Semantic.Variable
 import Language.Jass.Runtime.String
 import Language.Jass.Runtime.Memory
 import Language.Jass.Runtime.Globals
+import Language.Jass.Runtime.Code
 import LLVM.General.AST as LLVM
 import LLVM.General.AST.Global as Global
 import LLVM.General.AST.Constant
@@ -28,6 +29,8 @@ generateLLVM :: [TypeDef] -> [Callable] -> [Variable] -> Either SemanticError (N
 generateLLVM types callables variables = runCodegen context $ do
   -- runtime
   addRuntimeDefs
+  -- typedef registration for runtime
+  mapM_ (registerCustomType . getTypeName) types 
   -- variables support
   mapM_ genLLVM $ reverse variables
   addDefinition =<< genGlobalInitializersFunc <$> getGlobalsInitializers
@@ -41,7 +44,8 @@ generateLLVM types callables variables = runCodegen context $ do
         addRuntimeDefs = do
           mapM_ addDefinition getMemoryDefs 
           mapM_ addDefinition getStringUtilityDefs
-          
+          mapM_ addDefinition getCodeTypeDefs
+                 
 class LLVMDefinition a where
   genLLVM :: a -> Codegen ()  
 

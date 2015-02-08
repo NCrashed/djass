@@ -15,6 +15,8 @@ module Language.Jass.Codegen.Type(
   , isIntegralType
   , isStringType
   , getReference
+  , getTypeId
+  , getTypeFromId
   , module SemType
   ) where
 
@@ -135,3 +137,28 @@ isIntegralType _ = False
 isStringType :: LLVM.Type -> Bool
 isStringType (PointerType (IntegerType 8) _) = True
 isStringType _ = False
+
+-- | Returns jass type id, custom types should be registered before the function is called
+getTypeId :: JassType -> Codegen Int
+getTypeId JInteger = return 1
+getTypeId JReal = return 2
+getTypeId JBoolean = return 3
+getTypeId JString = return 4
+getTypeId JHandle = return 5
+getTypeId JCode = return 6
+getTypeId (JArray et) = (256 +) <$> getTypeId et 
+getTypeId (JUserDefined n) = (512 +) <$> getCustomTypeId n
+getTypeId JNull = throwError $ strMsg "ICE: cannot generate code for special type JNull"
+
+-- | Returns jass type by runtime id, custom types should be registered before the function is called
+getTypeFromId :: Int -> Codegen JassType
+getTypeFromId 1 = return JInteger
+getTypeFromId 2 = return JReal
+getTypeFromId 3 = return JBoolean
+getTypeFromId 4 = return JString
+getTypeFromId 5 = return JHandle
+getTypeFromId 6 = return JCode
+getTypeFromId n 
+  | n > 512 = JUserDefined <$> getCustomTypeFromId (n - 512)
+  | n > 256 = JArray <$> getTypeFromId (n - 256)
+  | otherwise = throwError $ strMsg $ "ICE: unknown id of type '" ++ show n ++ "'" 
