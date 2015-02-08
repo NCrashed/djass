@@ -7,6 +7,8 @@ module Language.Jass.Codegen.Type(
   , toLLVMType'
   , defaultValue
   , jassArray
+  , arraySize
+  , sizeOfType
   , getFunctionType
   , getFunctionArgumentsTypes
   , getFunctionReturnType
@@ -24,11 +26,14 @@ import LLVM.General.AST as LLVM
 import LLVM.General.AST.Type
 import LLVM.General.AST.Constant as LLVM
 import LLVM.General.AST.Float
+import LLVM.General.AST.DataLayout
+import LLVM.General.AST.AddrSpace
 import Control.Applicative
 import Control.Monad.Error
 import Language.Jass.Semantic.Callable
 import Language.Jass.Semantic.Variable
-  
+import qualified Data.Map.Lazy as ML
+ 
 -- | Default array size
 arraySize :: Num a => a
 arraySize = 65536
@@ -40,7 +45,7 @@ getReference name = do
   mvar <- getVariable name
   case mvar of
     Just var -> do
-      varType <- ptr <$> toLLVMType (getVarType var)
+      varType <- ptr <$> if isVarArray var then toLLVMType (JArray $ getVarType var) else toLLVMType (getVarType var)
       return (varType, if isGlobalVariable var then LLVM.ConstantOperand $ LLVM.GlobalReference varType (LLVM.Name name) else LLVM.LocalReference varType (LLVM.Name name))
     Nothing -> throwError $ strMsg $ "ICE: cannot find variable " ++ name
     
@@ -56,6 +61,20 @@ toLLVMType (JArray et) = ArrayType arraySize <$> toLLVMType et
 toLLVMType t@(JUserDefined _) = toLLVMType =<< getRootType t 
 toLLVMType JNull = throwError $ strMsg "ICE: cannot generate code for special type JNull"
 
+sizeOfType :: JassType -> Codegen Int
+sizeOfType JInteger = return 4
+sizeOfType JReal = return 4
+sizeOfType JBoolean = return 1
+sizeOfType JString = return pointerSize
+sizeOfType JHandle = return 8
+sizeOfType JCode = return 8 -- TODO: stub here
+sizeOfType (JArray et) = (arraySize *) <$> sizeOfType et
+sizeOfType t@(JUserDefined _) = sizeOfType =<< getRootType t 
+sizeOfType JNull = throwError $ strMsg "ICE: cannot generate code for special type JNull"
+
+pointerSize :: Int
+pointerSize = fromIntegral $ fst (pointerLayouts defaultDataLayout ML.! AddrSpace 0)
+
 -- | Ditto, including void type
 toLLVMType' :: Maybe JassType -> Codegen Type
 toLLVMType' = maybe (return VoidType) toLLVMType
@@ -68,10 +87,7 @@ defaultValue JBoolean = return $ Int 1 0
 defaultValue JString = return $ Null (ptr i8)
 defaultValue JHandle = return $ Int 64 0
 defaultValue JCode = return $ Int 64 0 -- TODO: stub here
-defaultValue (JArray et) = do
-  et' <- toLLVMType et
-  val <- defaultValue et
-  return $ Array et' $ replicate arraySize val
+defaultValue t@(JArray _) = Null <$> toLLVMType t
 defaultValue t@(JUserDefined _) = defaultValue =<< getRootType t
 defaultValue JNull = throwError $ strMsg "ICE: cannot generate code for special type JNull"
 

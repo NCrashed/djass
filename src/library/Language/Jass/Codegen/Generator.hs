@@ -8,6 +8,7 @@ import Language.Jass.Codegen.Type
 import Language.Jass.Codegen.Statement
 import Language.Jass.Codegen.Expression
 import Language.Jass.Codegen.Native
+import Language.Jass.Codegen.Helpers
 import Language.Jass.Parser.AST as AST
 import Language.Jass.Semantic.Callable
 import Language.Jass.Semantic.Variable
@@ -38,7 +39,7 @@ generateLLVM types callables variables = runCodegen context $ do
   return (mapping, module')
   where context = newContext types callables variables
         addRuntimeDefs = do
-          mapM_ addDefinition getAllocMemoryDefs 
+          mapM_ addDefinition getMemoryDefs 
           mapM_ addDefinition getStringUtilityDefs
           
 class LLVMDefinition a where
@@ -58,7 +59,7 @@ instance LLVMDefinition Variable where
       ]) (Just initVal)
   genLLVM (VarGlobal (GlobalVar _ isConst True jt varName Nothing)) = do
     initVal <- defaultValue (JArray jt)
-    genGlobal jt varName isConst [] (Just initVal)
+    genGlobal (JArray jt) varName isConst [] $ Just initVal
   genLLVM (VarGlobal (GlobalVar pos _ True _ _ (Just _))) = 
     throwError $ SemanticError pos "ICE: cannot generate variable with array initializer" 
   genLLVM _ = throwError $ strMsg "ICE: cannot generate code for non-global vars at top level" 
@@ -95,8 +96,9 @@ instance LLVMDefinition Callable where
       localBlockName varName = Name $ "block_local_" ++ varName
       genBasicBlocks :: Codegen [BasicBlock]
       genBasicBlocks = do
-        (entryBlockName, bodyBlocks) <- genBodyBlocks stmts
+        entryBlockName <- generateName "entry"
         (_, localsBlocks) <- foldM genLocal (entryBlockName, []) $ reverse locals
+        bodyBlocks <- genBodyBlocks entryBlockName stmts
         return $ localsBlocks ++ bodyBlocks
         
       -- | Generates local block, attaches it to previous block and saves in accumulator
@@ -109,8 +111,18 @@ instance LLVMDefinition Callable where
         llvmType <- toLLVMType jt
         genLocal' jt varName exprInstrs (LocalReference llvmType exprName) nextBlock acc 
       genLocal (nextBlock, acc) (LocalVar _ True jt varName Nothing) = do
-        initVal <- defaultValue (JArray jt)
-        genLocal' jt varName [] (ConstantOperand initVal) nextBlock acc 
+        llvmType <- toLLVMType $ JArray jt
+        memName <- generateName "arraymem"
+        arrSize <- sizeOfType $ JArray jt
+        let newBlock = BasicBlock (localBlockName varName)
+                       [memName := globalCall (ptr i8) allocMemoryFuncName [constInt 32 arrSize],
+                        Do $ globalCall VoidType memorySetFuncName [LocalReference (ptr i8) memName, constInt 8 0, constInt 32 arrSize],
+                        Name varName := bitcast (LocalReference (ptr i8) memName) (ptr llvmType)
+                       ]
+                       (Do $ jump nextBlock)
+        let destructor = [Do $ globalCall VoidType freeMemoryFuncName [LocalReference (ptr i8) memName]]
+        addEpilogueInstructions destructor
+        return (localBlockName varName, newBlock:acc)
       genLocal _ (LocalVar _ True _ _ (Just _)) = 
         throwError $ strMsg "ICE: cannot generate code for array expression at local variable initializator"
 
@@ -118,8 +130,8 @@ instance LLVMDefinition Callable where
         llvmType <- toLLVMType jt
         let newBlock = BasicBlock (localBlockName varName) 
                       (preInstr ++ 
-                      [Name varName := Alloca llvmType Nothing 0 [],
-                       Do $ Store False (LocalReference (ptr llvmType) (Name varName)) val Nothing 0 []])
+                      [Name varName := Alloca llvmType Nothing 0 []] ++
+                      [Do $ Store False (LocalReference (ptr llvmType) (Name varName)) val Nothing 0 []])
                       (Do $ Br nextBlock [])
         return (localBlockName varName, newBlock:acc)
         

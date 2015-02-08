@@ -67,15 +67,16 @@ genLLVMExpression expr@(UnaryExpression _ op val) = do
   resType <- toLLVMType resJassType
   let instr = opName := genUnaryOp op resType valName
   return (opName, valInstr ++ valConvInstr ++ [instr])
-genLLVMExpression (ArrayReference _ arrName indExpr) = do
+genLLVMExpression expr@(ArrayReference _ arrName indExpr) = do
   (indName, indInstr) <- genLLVMExpression indExpr
   ptrName <- generateName "arrptr"
   opName <- generateName "arrelem"
   indType <- toLLVMType =<< inferType indExpr
-  (refType, ref) <- getReference arrName
+  (_, ref) <- getReference arrName
+  elemType <- ptr <$> (toLLVMType =<< inferType expr) 
   return (opName, indInstr ++ [
-      ptrName := LLVM.GetElementPtr True ref [LocalReference indType indName] [],
-      opName := LLVM.Load False (LocalReference refType opName) Nothing 0 []
+      ptrName := LLVM.GetElementPtr True ref [ConstantOperand $ Const.Int 32 0, LocalReference indType indName] [],
+      opName := LLVM.Load False (LocalReference elemType ptrName) Nothing 0 []
     ])
 genLLVMExpression (FunctionCall _ funcName args) = do
   args' <- mapM genLLVMExpression args

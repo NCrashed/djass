@@ -7,9 +7,9 @@ import Language.Jass.JIT.Module
 import LLVM.General.Context
 import LLVM.General.PrettyPrint
 import Test.Tasty
---import Test.Tasty.QuickCheck as QC
 import Test.Tasty.HUnit
 
+import Control.Monad
 import Control.Monad.Trans.Except
 import Control.Monad.IO.Class
 import Control.Applicative
@@ -29,18 +29,18 @@ makeNativeTable = sequence [("writeln",) . castFunPtr <$> mkNativeWriteln native
 makeEmptyNativeTable :: IO [(String, FunPtr ())]
 makeEmptyNativeTable = return []
 
-checkJassFile :: FilePath -> IO [(String, FunPtr ())] -> (JITModule -> ExceptT String IO ()) -> Assertion
-checkJassFile path nativeTable action = withContext $ \cntx -> do
+checkJassFile :: FilePath -> Bool -> IO [(String, FunPtr ())] -> (JITModule -> ExceptT String IO ()) -> Assertion
+checkJassFile path dbgFlag nativeTable action = withContext $ \cntx -> do
   res <- runExceptT $ loadJassModuleFromFile path
   case res of
     Left err -> assertFailure err
     Right astModule -> do
-      putStrLn =<< showPretty <$> extractAST astModule
+      when dbgFlag $ putStrLn =<< showPretty <$> extractAST astModule
       res2 <- runExceptT $ withRaisedAST cntx astModule $ \llvmModule -> do
-        putStrLn' =<<  moduleAssembly llvmModule
+        when dbgFlag $ putStrLn' =<<  moduleAssembly llvmModule
         optimizeModule llvmModule
-        putStrLn' "Optimized: "
-        putStrLn' =<< moduleAssembly llvmModule
+        when dbgFlag $ putStrLn' "Optimized: "
+        when dbgFlag $ putStrLn' =<< moduleAssembly llvmModule
         tbl <- liftIO nativeTable
         withJassJIT cntx tbl llvmModule $ \jit -> action jit
       case res2 of
@@ -175,11 +175,36 @@ checkString jit = do
   liftIO $ res3 @?= "I don't know that input!"
   where
     exec1 = callFunc1 jit
+
+type SetA = CInt -> CFloat -> IO ()
+foreign import ccall "dynamic"
+  mkSetA :: FunPtr SetA -> SetA
+
+type GetA = CInt -> IO CFloat
+foreign import ccall "dynamic"
+  mkGetA :: FunPtr GetA -> GetA
+
+type TestLocalArray = CInt -> IO CInt
+foreign import ccall "dynamic"
+  mkTestLocalArray :: FunPtr TestLocalArray -> TestLocalArray
     
+checkArray :: JITModule -> ExceptT String IO ()
+checkArray jit = do
+  exec2 "setA" mkSetA 23 0.42
+  res1 <- exec1 "getA" mkGetA 23
+  liftIO $ res1 @?= 0.42
+  
+  res2 <- exec1 "testLocalArray" mkTestLocalArray 100
+  liftIO $ res2 @?= sum [0 .. 99]
+  where
+    exec1 = callFunc1 jit
+    exec2 = callFunc2 jit
+      
 simpleCodegenTest :: TestTree
-simpleCodegenTest = testGroup "jass helloworld"
-  [ testCase "hello.j" $ checkJassFile "tests/hello.j" makeNativeTable checkHello,
-    testCase "math.j" $ checkJassFile "tests/math.j" makeEmptyNativeTable checkMath,
-    testCase "global.j" $ checkJassFile "tests/global.j" makeEmptyNativeTable checkGlobal,
-    testCase "string.j" $ checkJassFile "tests/string.j" makeEmptyNativeTable checkString
+simpleCodegenTest = let dbgFlag = False in testGroup "jass helloworld"
+  [ testCase "hello.j" $ checkJassFile "tests/hello.j" dbgFlag makeNativeTable checkHello,
+    testCase "math.j" $ checkJassFile "tests/math.j" dbgFlag makeEmptyNativeTable checkMath,
+    testCase "global.j" $ checkJassFile "tests/global.j" dbgFlag makeEmptyNativeTable checkGlobal,
+    testCase "string.j" $ checkJassFile "tests/string.j" dbgFlag makeEmptyNativeTable checkString,
+    testCase "array.j" $ checkJassFile "tests/array.j" dbgFlag makeEmptyNativeTable checkArray
   ]

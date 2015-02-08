@@ -6,28 +6,67 @@ import Language.Jass.Parser.AST
 import Language.Jass.Codegen.Context
 import Language.Jass.Codegen.Expression
 import Language.Jass.Codegen.Type
-import Control.Monad.Error
-import Control.Applicative
 import LLVM.General.AST as LLVM
 import LLVM.General.AST.CallingConvention as LLVM
 import LLVM.General.AST.Type as LLVM
 import LLVM.General.AST.Constant as Const
 import LLVM.General.AST.Instruction as Instr
+import Control.Monad.Error
+import Control.Applicative
+import Control.Arrow
+import Data.Maybe
 
-genBodyBlocks :: [Statement] -> Codegen (Name, [BasicBlock])
-genBodyBlocks stmts = do
+genBodyBlocks :: Name -> [Statement] -> Codegen [BasicBlock]
+genBodyBlocks entryName stmts = do
   epilogueName <- generateName "epilogue"
-  -- finishCurrentBlock $ Br epilogueName []
   (start, blocks) <- genBlocks stmts epilogueName
+  let entryBlock = BasicBlock entryName [] (Do $ Br start [])
   pushNewBlock epilogueName
   retType <- getFunctionReturnType =<< getCurrentFunction
   let endTerm = case retType of
                   VoidType -> Ret Nothing []
                   _ -> Unreachable []
+  appendCurrentBlock =<< getEpilogueInstructions
   finishCurrentBlock endTerm
-  endBlock <- purgeBlocks
-  return (start, blocks ++ endBlock)
+  [endBlock] <- purgeBlocks
+  finalBlocks <- redirectToEpilogue retType epilogueName endBlock blocks
+  return $ entryBlock:finalBlocks
+
+-- | Replaces all returns in blocks to jumps into epilogue
+redirectToEpilogue :: LLVM.Type -> Name -> BasicBlock -> [BasicBlock] -> Codegen [BasicBlock]
+redirectToEpilogue VoidType epilogueName epilogueBlock blocks =
+  return $ (replaceRet <$> blocks) ++ [epilogueBlock]
+  where
+    replaceRet (BasicBlock n is (rn := Ret _ _)) = BasicBlock n is $ rn := Br epilogueName []
+    replaceRet (BasicBlock n is (Do (Ret _ _))) = BasicBlock n is $ Do $ Br epilogueName []
+    replaceRet b = b
     
+redirectToEpilogue retType epilogueName epilogueBlock blocks = do
+  let (blocks', phiVals) = second catMaybes $ unzip (modifyBlocks <$> blocks)
+  epilogue' <- modifyEpilogue epilogueBlock phiVals
+  return $ blocks' ++ [epilogue']
+  where
+    modifyBlocks (BasicBlock n is (rn := Ret mop _)) = (BasicBlock n is (rn := Br epilogueName []), Just (fromJust mop, n))
+    modifyBlocks (BasicBlock n is (Do (Ret mop _))) = (BasicBlock n is (Do $ Br epilogueName []), Just (fromJust mop, n))
+    modifyBlocks b
+      | isJumpToEpilogue (getTerm b) = (b, Just (ConstantOperand $ Const.Undef retType, getName b))
+      | otherwise = (b, Nothing)
+    
+    getTerm (BasicBlock _ _ (_ := term)) = term
+    getTerm (BasicBlock _ _ (Do term)) = term
+    
+    getName (BasicBlock n _ _) = n
+    
+    isJumpToEpilogue (Br e _) = e == epilogueName
+    isJumpToEpilogue (CondBr _ e1 e2 _) = e1 == epilogueName || e2 == epilogueName
+    isJumpToEpilogue _ = False
+     
+    modifyEpilogue (BasicBlock n is _) phiVals = do
+      tempName <- generateName "return"
+      return $ BasicBlock n 
+        ((tempName := Phi retType phiVals []) : is)
+        (Do $ Ret (Just $ LocalReference retType tempName) [])
+        
 genBlocks :: [Statement] -> Name -> Codegen (Name, [BasicBlock])
 genBlocks stmts nextBlock = catchBlocks $ do
   startName <- generateName "block"
@@ -58,14 +97,15 @@ genLLVMStatement (SetArrayStatement _ _ name indExpr valExpr) = do
   (indExprName, indExprInstr) <- genLLVMExpression indExpr
   (valExprName, valExprInstr) <- genLLVMExpression valExpr
   (elemType, varRef) <- getReference name
+  valType <- toLLVMType =<< inferType valExpr
   indType <- toLLVMType JInteger
   indexPtrName <- generateName "index"
   let indexInstr = indexPtrName := Instr.GetElementPtr True 
                    varRef
-                   [LocalReference indType indExprName] []
+                   [ConstantOperand $ Const.Int 32 0, LocalReference indType indExprName] []
       storeInstr = Do $ Store False
                    (LocalReference elemType indexPtrName)
-                   (LocalReference elemType valExprName) Nothing 0 []
+                   (LocalReference valType valExprName) Nothing 0 []
   appendCurrentBlock $ indExprInstr ++ valExprInstr ++ [indexInstr, storeInstr]
   
 genLLVMStatement (IfThenElseStatement _ _ condExpr thenStmts elseifs) = do  

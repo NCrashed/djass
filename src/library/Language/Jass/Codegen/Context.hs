@@ -38,6 +38,9 @@ module Language.Jass.Codegen.Context(
   -- | Globals helpser
   addGlobalInitializer,
   getGlobalsInitializers,
+  -- | Epilogue utilitites
+  addEpilogueInstructions,
+  getEpilogueInstructions,
   module SemError
   ) where
   
@@ -78,7 +81,9 @@ data CodegenContext = CodegenContext {
   nativesMapping :: NativesMapping,
   -- Global variables initializers, generator uses accumulated instructions to gen special function
   -- that holds the initializers
-  globalVarsInitializers :: [LLVM.Named LLVM.Instruction]
+  globalVarsInitializers :: [LLVM.Named LLVM.Instruction],
+  -- Accumulator that holds instructions (usually memory freeing calls) to put at the end of function
+  epilogueInstructions :: [LLVM.Named LLVM.Instruction]
 }
 
 newContext :: [TypeDef] -> [Callable] -> [Variable] -> CodegenContext
@@ -94,7 +99,8 @@ newContext types callables variables = CodegenContext {
     contextLoopReturn = Nothing,
     contextCurrentFunction = "",
     nativesMapping = HM.empty,
-    globalVarsInitializers = []
+    globalVarsInitializers = [],
+    epilogueInstructions = []
   } 
   where
     convertToMap getter ls = zip (fmap getter ls) ls
@@ -257,7 +263,9 @@ getCurrentFunction = fmap contextCurrentFunction get
 setCurrentFunction :: String -> Codegen ()
 setCurrentFunction name = do
   context <- get
-  put $ context { contextCurrentFunction = name, contextLoopReturn = Nothing }
+  put $ context { contextCurrentFunction = name
+                , contextLoopReturn = Nothing
+                , epilogueInstructions = [] }
   
 addNativeMapping :: String -> LLVM.Name -> Codegen ()
 addNativeMapping exportName setterName = do
@@ -284,3 +292,15 @@ addGlobalInitializer instrs = do
 -- holds all global variables initilizators
 getGlobalsInitializers :: Codegen [LLVM.Named LLVM.Instruction]
 getGlobalsInitializers = fmap globalVarsInitializers get
+
+-- | Appends to special accumulator that would be writed at the end 
+-- of function body
+addEpilogueInstructions :: [LLVM.Named LLVM.Instruction] -> Codegen ()
+addEpilogueInstructions instrs = do
+  context <- get
+  let einstrs = epilogueInstructions context
+  put $ context { epilogueInstructions = einstrs ++ instrs }
+
+-- | Returns accumulated epilogure instructions
+getEpilogueInstructions :: Codegen [LLVM.Named LLVM.Instruction]
+getEpilogueInstructions = fmap epilogueInstructions get
