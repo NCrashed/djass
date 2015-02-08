@@ -159,18 +159,10 @@ genLLVMStatement (CallStatement _ _ name args) = do
   funcType <- ptr <$> getFunctionType name
   argsTypes <- getFunctionArgumentsTypes name
   (argsNames, argsInstrs) <- unzip <$> mapM genLLVMExpression args
-  isNative <- isDefinedNative name
   let argsRefs = uncurry LocalReference <$> zip argsTypes argsNames
-  
-  callInstr <- if not isNative then 
-                return [Do $ Call False C [] 
-                       (Right $ ConstantOperand $ GlobalReference funcType (Name name)) 
-                       (zip argsRefs (repeat [])) [] []]
-               else do
-                tempName <- generateName "nativeptr"
-                return [
-                  tempName := Load False (ConstantOperand $ GlobalReference (ptr funcType) (Name name)) Nothing 0 [],
-                  Do $ Call False C [] (Right $ LocalReference funcType tempName) (zip argsRefs (repeat [])) [] []]
+  let callInstr = [Do $ Call False C [] 
+                  (Right $ ConstantOperand $ GlobalReference funcType (Name name)) 
+                  (zip argsRefs (repeat [])) [] []]
   appendCurrentBlock $ concat argsInstrs ++ callInstr
 genLLVMStatement (LoopStatement _ _ stmts) = do
   preBlock <- generateName "block_loop_ptr"
