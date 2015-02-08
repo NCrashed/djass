@@ -61,6 +61,7 @@ instance SemanticCheck Variable where
   checkSemantic var _ = do
     checkRedefinition
     checkInitializer
+    checkCodeArray
     where
       -- | Fails if variable already exists
       checkRedefinition = do
@@ -83,7 +84,12 @@ instance SemanticCheck Variable where
             unless cond $ throwError $ SemanticError (getExpressionPos initExpr) $ 
               "Type mismatch in variable initial value, expected " ++
                 show jtype ++ " but got " ++ show exprType
-        
+      -- | Fails if var is array of code
+      checkCodeArray = 
+        case getVarType var of
+          JCode -> when (isVarArray var) $ throwError $ SemanticError (getVarPos var) "Code array is illegal" 
+          _ -> return ()
+          
 instance SemanticCheck Parameter where
   checkSemantic p@(Parameter src jtype name) _ = do
     checkSemantic jtype $ SemanticError src $ "Type of parameter " ++ name ++ " is unknown!"
