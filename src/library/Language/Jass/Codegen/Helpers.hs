@@ -1,5 +1,6 @@
 module Language.Jass.Codegen.Helpers(
     globalCall
+  , globalFunc
   , constInt
   , jump
   , bitcast
@@ -7,6 +8,7 @@ module Language.Jass.Codegen.Helpers(
   , ret
   , retVoid
   , load
+  , store
   ) where
   
 import LLVM.General.AST
@@ -16,7 +18,11 @@ import Data.Word
 
 -- | Helps to generate calls to global functions
 globalCall :: Type -> String -> [Operand] -> Instruction
-globalCall retType funcName args = Call True C [] (Right $ ConstantOperand $ Const.GlobalReference retType $ Name funcName) (args `zip` repeat []) [] []
+globalCall retType funcName args = Call True C [] (Right $ globalFunc retType funcName) (args `zip` repeat []) [] []
+
+-- | Helps to generate reference to global function
+globalFunc :: Type -> String -> Operand
+globalFunc tp nm = ConstantOperand $ Const.GlobalReference tp $ Name nm
 
 -- | Generates constant integer operand for specified bits count and value 
 constInt :: Word32 -> Int -> Operand
@@ -42,6 +48,10 @@ ret op = Ret (Just op) []
 retVoid :: Terminator
 retVoid = Ret Nothing []
 
--- | Alias for load
+-- | Alias for Load
 load :: Operand -> Instruction
 load op = Load False op Nothing 0 []
+
+-- | Alias for Store
+store :: Operand -> Operand -> Instruction
+store adr val = Store False adr val Nothing 0 []

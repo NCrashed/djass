@@ -7,6 +7,7 @@ import Language.Jass.Parser.AST as AST
 import Language.Jass.Codegen.Context
 import Language.Jass.Codegen.Type
 import Language.Jass.Runtime.String
+import Language.Jass.Runtime.Code
 import LLVM.General.AST as LLVM
 import qualified LLVM.General.AST.IntegerPredicate as LLVMI
 import qualified LLVM.General.AST.FloatingPointPredicate as LLVMF
@@ -89,7 +90,11 @@ genLLVMExpression (FunctionCall _ funcName args) = do
                   (Right $ ConstantOperand $ GlobalReference funcType (Name funcName)) 
                   (zip argOperands (repeat [])) [] []]
   return (opName, concat argInstr ++ callInstr)
-genLLVMExpression (FunctionReference _ _) = throwError $ strMsg "ICE: function references aren't implemented!" --TODO: here
+genLLVMExpression (FunctionReference _ nm) = do
+  mc <- getCallable nm
+  case mc of
+    Nothing -> throwError $ strMsg $ "ICE: cannot find function " ++ nm
+    Just callable -> generateCodeValue callable
 genLLVMExpression (VariableReference _ varName) = do
   isPar <- isParameter varName
   if isPar then return (Name varName, []) else do
@@ -123,7 +128,7 @@ genLLVMExpression (StringLiteral _ val) = do
 genBinaryOp :: BinaryOperator -> Type -> Name -> Name -> Instruction
 genBinaryOp AST.And res left right = LLVM.And (LocalReference res left) (LocalReference res right) []
 genBinaryOp AST.Or res left right = LLVM.Or (LocalReference res left) (LocalReference res right) []
-genBinaryOp AST.Equal res left right -- | TODO: string compare
+genBinaryOp AST.Equal res left right
   | isIntegralType res = LLVM.ICmp LLVMI.EQ (LocalReference res left) (LocalReference res right) []
   | isStringType res = error "ICE: equality op generation for string malformed call"
   | otherwise = LLVM.FCmp LLVMF.OEQ (LocalReference res left) (LocalReference res right) [] 

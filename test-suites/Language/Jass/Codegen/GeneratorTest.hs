@@ -1,9 +1,11 @@
 {-# LANGUAGE TupleSections, TypeOperators #-}
 module Language.Jass.Codegen.GeneratorTest where
 
+import Language.Jass.Runtime.Code
 import Language.Jass.JIT.Executing
 import Language.Jass.JIT.Calling
 import Language.Jass.JIT.Module
+import Language.Jass.JassType
 import LLVM.General.Context
 import LLVM.General.PrettyPrint
 import Test.Tasty
@@ -17,19 +19,20 @@ import Control.Applicative
 import Foreign.C.String
 import Foreign.C.Types
 import Foreign.Ptr
+import Data.Maybe
 
 type NativeWriteln = CString -> IO ()
 nativeWriteln :: NativeWriteln
 nativeWriteln adr = putStrLn =<< fromJass adr
 foreign import ccall "wrapper" mkNativeWriteln :: NativeWriteln -> IO (FunPtr NativeWriteln)
 
-makeNativeTable :: IO [(String, FunPtr ())]
-makeNativeTable = sequence [("writeln",) . castFunPtr <$> mkNativeWriteln nativeWriteln]
+makeNativeTable :: JITModule -> ExceptT String IO [(String, FunPtr ())]
+makeNativeTable _ = liftIO $ sequence [("writeln",) . castFunPtr <$> mkNativeWriteln nativeWriteln]
 
-makeEmptyNativeTable :: IO [(String, FunPtr ())]
-makeEmptyNativeTable = return []
+makeEmptyNativeTable :: JITModule -> ExceptT String IO [(String, FunPtr ())]
+makeEmptyNativeTable _ = return []
 
-checkJassFile :: FilePath -> Bool -> IO [(String, FunPtr ())] -> (JITModule -> ExceptT String IO ()) -> Assertion
+checkJassFile :: FilePath -> Bool -> (JITModule -> ExceptT String IO [(String, FunPtr ())]) -> (JITModule -> ExceptT String IO ()) -> Assertion
 checkJassFile path dbgFlag nativeTable action = withContext $ \cntx -> do
   res <- runExceptT $ loadJassModuleFromFile path
   case res of
@@ -41,8 +44,7 @@ checkJassFile path dbgFlag nativeTable action = withContext $ \cntx -> do
         optimizeModule llvmModule
         when dbgFlag $ putStrLn' "Optimized: "
         when dbgFlag $ putStrLn' =<< moduleAssembly llvmModule
-        tbl <- liftIO nativeTable
-        withJassJIT cntx tbl llvmModule $ \jit -> action jit
+        withJassJIT cntx nativeTable llvmModule action
       case res2 of
         Left err -> assertFailure err
         Right _ -> return ()
@@ -199,12 +201,53 @@ checkArray jit = do
   where
     exec1 = callFunc1 jit
     exec2 = callFunc2 jit
+
+type MyCallback = CInt -> CFloat -> IO ()
+foreign import ccall "dynamic"
+  mkMyCallback :: FunPtr MyCallback -> MyCallback
+
+type MyGetA = IO CInt
+foreign import ccall "dynamic"
+  mkMyGetA :: FunPtr MyGetA -> MyGetA
+  
+type MyGetB = IO CFloat
+foreign import ccall "dynamic"
+  mkMyGetB :: FunPtr MyGetB -> MyGetB
+    
+type NativeSetCallback = JassCodeRef -> IO ()
+nativeSetCallback :: JITModule -> NativeSetCallback
+nativeSetCallback jit adr = do
+  mjcode <- runExceptT $ liftJassCode jit adr
+  case mjcode of
+    Left msg -> putStrLn msg
+    Right jcode -> do
+      putStrLn $ "Code return type " ++ show (codeReturnType jcode)
+      assertBool "Code return type is invalid" $ isNothing (codeReturnType jcode) 
+      putStrLn $ "Code args types " ++ show (codeArgumentTypes jcode)
+      assertBool "Code args are invalid" $ codeArgumentTypes jcode == [JInteger, JReal]
+      mkMyCallback (castFunPtr $ codeFunctionPtr jcode) 23 42.0
       
+foreign import ccall "wrapper" mkNativeSetCallback :: NativeSetCallback -> IO (FunPtr NativeSetCallback)
+
+makeCheckCodeNativeTable :: JITModule -> ExceptT String IO [(String, FunPtr ())]
+makeCheckCodeNativeTable jit = liftIO $ sequence [("setCallback",) . castFunPtr <$> mkNativeSetCallback (nativeSetCallback jit)]
+
+checkCode :: JITModule -> ExceptT String IO ()
+checkCode jit = do
+  callMain jit
+  resA <- exec0 "getA" mkMyGetA
+  liftIO $ resA @?= 23 
+  resB <- exec0 "getB" mkMyGetB
+  liftIO $ resB @?= 42.0  
+  where
+    exec0 = callFunc0 jit
+         
 simpleCodegenTest :: TestTree
 simpleCodegenTest = let dbgFlag = False in testGroup "jass helloworld"
   [ testCase "hello.j" $ checkJassFile "tests/hello.j" dbgFlag makeNativeTable checkHello,
     testCase "math.j" $ checkJassFile "tests/math.j" dbgFlag makeEmptyNativeTable checkMath,
     testCase "global.j" $ checkJassFile "tests/global.j" dbgFlag makeEmptyNativeTable checkGlobal,
     testCase "string.j" $ checkJassFile "tests/string.j" dbgFlag makeEmptyNativeTable checkString,
-    testCase "array.j" $ checkJassFile "tests/array.j" dbgFlag makeEmptyNativeTable checkArray
+    testCase "array.j" $ checkJassFile "tests/array.j" dbgFlag makeEmptyNativeTable checkArray,
+    testCase "code.j" $ checkJassFile "tests/code.j" dbgFlag makeCheckCodeNativeTable checkCode
   ]

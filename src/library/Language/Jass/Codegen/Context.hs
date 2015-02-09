@@ -5,6 +5,7 @@ module Language.Jass.Codegen.Context(
   , Codegen
   , runCodegen
   , newContext
+  , jassDataLayout
   -- | Getting info from context
   , getType
   , getCallable
@@ -45,10 +46,12 @@ module Language.Jass.Codegen.Context(
   , registerCustomType
   , getCustomTypeId
   , getCustomTypeFromId
+  , getCustomTypes
   , module SemError
   ) where
   
 import Data.HashMap.Strict as HM
+import qualified Data.Map.Lazy as ML
 import Language.Jass.Parser.AST.TypeDef
 import Language.Jass.Semantic.Callable
 import Language.Jass.Semantic.Variable
@@ -56,6 +59,8 @@ import Language.Jass.Semantic.SemanticError as SemError
 import Control.Monad.Error
 import Control.Monad.State.Strict
 import qualified LLVM.General.AST as LLVM
+import qualified LLVM.General.AST.DataLayout as LLVM
+import qualified LLVM.General.AST.AddrSpace as LLVM
 import Control.Applicative
 import Data.Word
 import Safe (headMay)
@@ -94,13 +99,16 @@ data CodegenContext = CodegenContext {
   typeIdCounter :: Int
 }
 
-newContext :: [TypeDef] -> [Callable] -> [Variable] -> CodegenContext
-newContext types callables variables = CodegenContext {
+newContext :: String -> [TypeDef] -> [Callable] -> [Variable] -> CodegenContext
+newContext modName types callables variables = CodegenContext {
     contextTypes = fromList $ convertToMap getTypeName types,
     contextCallables = fromList $ convertToMap getCallableName callables,
     contextVariables = fromList $ convertToMap getVarName variables,
     contextLocalVariables = HM.empty,
-    contextModule = LLVM.defaultModule,
+    contextModule = LLVM.defaultModule {
+      LLVM.moduleName = modName,
+      LLVM.moduleDataLayout = Just jassDataLayout 
+    },
     nameCounters = HM.empty,
     globalNameCounters = HM.empty,
     contextSavedBlocks = [],
@@ -115,6 +123,12 @@ newContext types callables variables = CodegenContext {
   } 
   where
     convertToMap getter ls = zip (fmap getter ls) ls
+
+-- | Forces pointers to be i64
+jassDataLayout :: LLVM.DataLayout
+jassDataLayout = LLVM.defaultDataLayout {
+  LLVM.pointerLayouts = ML.fromList [(LLVM.AddrSpace 0, (8, LLVM.AlignmentInfo 0 Nothing))]
+}
     
 newtype Codegen a = Codegen { runCodegen_ :: ErrorT SemanticError (State CodegenContext) a }
   deriving (Functor, Applicative, Monad, MonadState CodegenContext, MonadError SemanticError)
@@ -347,3 +361,7 @@ getCustomTypeFromId i = do
   case HM.lookup i table of
     Nothing -> throwError $ strMsg $ "ICE: Cannot find type by id: " ++ show i
     Just n -> return n
+    
+-- | Returns accumulated mapping from ids to custom types names
+getCustomTypes :: Codegen (HM.HashMap Int String)
+getCustomTypes = id2type <$> get

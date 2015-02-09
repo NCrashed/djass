@@ -43,7 +43,7 @@ callFunc6 exModule funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6 = callFunc e
 callFunc7 exModule funcName funcMaker arg1 arg2 arg3 arg4 arg5 arg6 arg7 = callFunc exModule funcName $ \ptr -> liftIO $ (funcMaker $ castFunPtr ptr) arg1 arg2 arg3 arg4 arg5 arg6 arg7
 
 callFunc :: JITModule -> String -> (FunPtr () -> ExceptT String IO a) -> ExceptT String IO a 
-callFunc (JITModule exModule) funcName action = do
+callFunc (JITModule _ exModule) funcName action = do
   mptr <- liftIO $ getFunction exModule (Name funcName)
   case mptr of
     Nothing -> throwE $ "Cannot find "++ funcName ++" function in jass module!"

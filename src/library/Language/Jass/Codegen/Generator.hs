@@ -25,8 +25,8 @@ import Control.Monad
 import Control.Monad.Error
 import Control.Applicative
 
-generateLLVM :: [TypeDef] -> [Callable] -> [Variable] -> Either SemanticError (NativesMapping, Module)
-generateLLVM types callables variables = runCodegen context $ do
+generateLLVM :: String -> [TypeDef] -> [Callable] -> [Variable] -> Either SemanticError (NativesMapping, TypesMap, Module)
+generateLLVM modName types callables variables = runCodegen context $ do
   -- runtime
   addRuntimeDefs
   -- typedef registration for runtime
@@ -38,9 +38,10 @@ generateLLVM types callables variables = runCodegen context $ do
   mapM_ genLLVM $ reverse callables
   -- collect result
   mapping <- getNativesMapping
+  tmap <- getTypeMap
   module' <- getModule
-  return (mapping, module')
-  where context = newContext types callables variables
+  return (mapping, tmap, module')
+  where context = newContext modName types callables variables
         addRuntimeDefs = do
           mapM_ addDefinition getMemoryDefs 
           mapM_ addDefinition getStringUtilityDefs

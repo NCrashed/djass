@@ -11,6 +11,7 @@ module Language.Jass.JIT.Module(
   ) where
 
 import Language.Jass.Codegen.Context
+import Language.Jass.Codegen.Type
 import LLVM.General.AST as LLVMAST
 import LLVM.General.Module as LLVM
 import LLVM.General.ExecutionEngine
@@ -23,21 +24,22 @@ import Data.Either
 import Data.List (nub)
 
 -- | Compiled module with unset natives
-data ParsedModule = ParsedModule NativesMapping LLVMAST.Module
+data ParsedModule = ParsedModule NativesMapping TypesMap LLVMAST.Module
 -- | Raised into llvm module
-data UnlinkedModule = UnlinkedModule NativesMap LLVM.Module
+data UnlinkedModule = UnlinkedModule NativesMap TypesMap LLVM.Module
 -- | Executing module
-newtype JITModule = JITModule (ExecutableModule JIT)
+data JITModule = JITModule TypesMap (ExecutableModule JIT)
+
 type NativesMap = HashMap String (Either LLVMAST.Name (LLVMAST.Name, FunPtr ()))
 
 class ExtractAST a where
   extractAST :: a -> IO LLVMAST.Module
 
 instance ExtractAST ParsedModule where
-  extractAST (ParsedModule _ m) = return m
+  extractAST (ParsedModule _ _ m) = return m
   
 instance ExtractAST UnlinkedModule where
-  extractAST (UnlinkedModule _ m) = moduleAST m
+  extractAST (UnlinkedModule _ _ m) = moduleAST m
  
 -- | Creates new native map from mapping (user should fill all natives with ptrs)
 nativesMapFromMapping :: NativesMapping -> NativesMap

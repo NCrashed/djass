@@ -26,29 +26,29 @@ import Foreign.Ptr
 import Control.Monad.IO.Class (liftIO)
 
 loadJassModule :: String -> String -> ExceptT String IO ParsedModule
-loadJassModule name code = loadJassFromSource $ liftExceptPure $ parseJass name code
+loadJassModule name code = loadJassFromSource name $ liftExceptPure $ parseJass name code
 
 loadJassModuleFromFile :: FilePath -> ExceptT String IO ParsedModule
-loadJassModuleFromFile path = loadJassFromSource $ liftExcept $ parseJassFile path
+loadJassModuleFromFile path = loadJassFromSource path $ liftExcept $ parseJassFile path
 
-loadJassFromSource :: ExceptT String IO JassModule -> ExceptT String IO ParsedModule
-loadJassFromSource source = do
+loadJassFromSource :: String -> ExceptT String IO JassModule -> ExceptT String IO ParsedModule
+loadJassFromSource modName source = do
   tree <- source
   context <- liftExceptPure $ checkModuleSemantic tree
-  (mapping, module') <- liftExceptPure $ uncurry3 generateLLVM context
-  return $ ParsedModule mapping module'
+  triple <- liftExceptPure $ uncurry3 (generateLLVM modName) context
+  return $ uncurry3 ParsedModule triple
 
 withRaisedAST :: Context -> ParsedModule -> (UnlinkedModule -> ExceptT String IO a) -> ExceptT String IO a
-withRaisedAST cntx (ParsedModule mapping module') f = do
+withRaisedAST cntx (ParsedModule mapping tmap module') f = do
   let map' = nativesMapFromMapping mapping
-  res <- withModuleFromAST cntx module' $ \mod' -> runExceptT $ f $ UnlinkedModule map' mod'
+  res <- withModuleFromAST cntx module' $ \mod' -> runExceptT $ f $ UnlinkedModule map' tmap mod'
   liftExceptPure res
 
 moduleAssembly :: UnlinkedModule -> ExceptT String IO String
-moduleAssembly (UnlinkedModule _ llvmModule) = liftIO $ moduleLLVMAssembly llvmModule
+moduleAssembly (UnlinkedModule _ _ llvmModule) = liftIO $ moduleLLVMAssembly llvmModule
 
 optimizeModule :: UnlinkedModule -> ExceptT String IO ()
-optimizeModule (UnlinkedModule _ llvmModule) = liftIO $ void $ withPassManager set $ \ mng -> runPassManager mng llvmModule
+optimizeModule (UnlinkedModule _ _ llvmModule) = liftIO $ void $ withPassManager set $ \ mng -> runPassManager mng llvmModule
   where set = defaultCuratedPassSetSpec {
                 optLevel = Just 3
               , simplifyLibCalls = Just True
@@ -57,15 +57,17 @@ optimizeModule (UnlinkedModule _ llvmModule) = liftIO $ void $ withPassManager s
               , useInlinerWithThreshold = Just 1000
               }
   
-withJassJIT :: Context -> [(String, FunPtr ())] -> UnlinkedModule -> (JITModule -> ExceptT String IO a) -> ExceptT String IO a
-withJassJIT cntx natives (UnlinkedModule nativesMap llvmModule) action = do
-  checkNativesName (fst <$> natives) nativesMap
-  let bindedNatives = foldl (\mp f -> f mp) nativesMap $ fmap (uncurry nativesMapBind) natives
-  case isAllNativesBinded bindedNatives of
-      Just name -> throwE $ "Native '" ++ name ++ "' isn't binded!"
-      Nothing -> liftExcept $ withJIT cntx 3 $ \jit -> withModuleInEngine jit llvmModule $ \exModule -> runExceptT $ do
-                    let jitModule = JITModule exModule
-                    mapM_ (uncurry $ callNativeBinder jitModule) $ getNativesBindings bindedNatives
-                    setDefaultAllocator jitModule
-                    executeGlobalInitializers jitModule
-                    action jitModule
+withJassJIT :: Context -> (JITModule -> ExceptT String IO [(String, FunPtr ())]) -> UnlinkedModule -> (JITModule -> ExceptT String IO a) -> ExceptT String IO a
+withJassJIT cntx nativesMaker (UnlinkedModule nativesMap tmap llvmModule) action = 
+  liftExcept $ withJIT cntx 3 $ \jit -> withModuleInEngine jit llvmModule $ \exModule -> runExceptT $ do
+    let jitModule = JITModule tmap exModule
+    natives <- nativesMaker jitModule
+    checkNativesName (fst <$> natives) nativesMap
+    let bindedNatives = foldl (\mp f -> f mp) nativesMap $ fmap (uncurry nativesMapBind) natives
+    case isAllNativesBinded bindedNatives of
+        Just name -> throwE $ "Native '" ++ name ++ "' isn't binded!"
+        Nothing -> do
+          mapM_ (uncurry $ callNativeBinder jitModule) $ getNativesBindings bindedNatives
+          setDefaultAllocator jitModule
+          executeGlobalInitializers jitModule
+          action jitModule
