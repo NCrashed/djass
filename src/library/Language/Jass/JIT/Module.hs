@@ -19,7 +19,6 @@ import Control.Monad
 import Control.Monad.Trans.Except
 import Foreign.Ptr
 import Data.HashMap.Strict as HM
-import Data.Maybe
 import Data.Either
 import Data.List (nub)
 
@@ -54,18 +53,20 @@ isAllNativesBinded = HM.foldlWithKey' isSet Nothing
 
 -- | Binds one native to function pointer
 nativesMapBind :: String -> FunPtr a -> NativesMap -> NativesMap
-nativesMapBind nativeName ptr mapping = HM.insert nativeName (Right (llvmName, castFunPtr ptr)) mapping 
-  where (Left llvmName) = fromJust $ HM.lookup nativeName mapping
+nativesMapBind nativeName ptr mapping = case HM.lookup nativeName mapping of
+  Just (Left llvmName) -> HM.insert nativeName (Right (llvmName, castFunPtr ptr)) mapping
+  _ -> mapping 
 
 -- | Check sanity of user input
 checkNativesName :: [String] -> NativesMap -> ExceptT String IO ()
 checkNativesName names mapping 
   | length (nub names) /= length names = throwE "Natives bindings has duplicates!"
-  | otherwise = forM_ names $ \name -> 
-    case HM.lookup name mapping of
-      Nothing -> throwE $ "Native '" ++ name ++ "' cannot be found!"
+  | otherwise = forM_ (HM.keys mapping) $ \name ->
+    if name `elem` names 
+    then case HM.lookup name mapping of
       Just (Right _) -> throwE $ "Native '" ++ name ++ "' is already binded!"
       _ -> return ()
+    else throwE $ "Native '" ++ name ++ "' cannot be found!"
 
 -- | Returns only prepared bindings
 getNativesBindings :: NativesMap -> [(LLVMAST.Name, FunPtr ())]
