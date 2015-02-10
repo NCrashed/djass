@@ -5,6 +5,7 @@ module Language.Jass.JIT.Executing(
   , optimizeModule
   , moduleAssembly
   , withJassJIT
+  , NativeTableMaker
   ) where
 
 import Language.Jass.Runtime.Memory
@@ -24,6 +25,9 @@ import Control.Monad.Trans.Except
 import Control.Applicative
 import Foreign.Ptr
 import Control.Monad.IO.Class (liftIO)
+
+-- | Users defines this function to specify natives
+type NativeTableMaker = JITModule -> ExceptT String IO [(String, FunPtr ())]
 
 loadJassModule :: String -> String -> ExceptT String IO ParsedModule
 loadJassModule name code = loadJassFromSource name $ liftExceptPure $ parseJass name code
@@ -57,7 +61,7 @@ optimizeModule (UnlinkedModule _ _ llvmModule) = liftIO $ void $ withPassManager
               , useInlinerWithThreshold = Just 1000
               }
   
-withJassJIT :: Context -> (JITModule -> ExceptT String IO [(String, FunPtr ())]) -> UnlinkedModule -> (JITModule -> ExceptT String IO a) -> ExceptT String IO a
+withJassJIT :: Context -> NativeTableMaker -> UnlinkedModule -> (JITModule -> ExceptT String IO a) -> ExceptT String IO a
 withJassJIT cntx nativesMaker (UnlinkedModule nativesMap tmap llvmModule) action = 
   liftExcept $ withJIT cntx 3 $ \jit -> withModuleInEngine jit llvmModule $ \exModule -> runExceptT $ do
     let jitModule = JITModule tmap exModule
