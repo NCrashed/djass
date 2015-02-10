@@ -29,30 +29,32 @@ import Control.Monad.IO.Class (liftIO)
 -- | Users defines this function to specify natives
 type NativeTableMaker = JITModule -> ExceptT String IO [(String, FunPtr ())]
 
-loadJassModule :: String -> String -> ExceptT String IO ParsedModule
+-- single file api
+loadJassModule :: String -> String -> ExceptT String IO JassProgram
 loadJassModule name code = loadJassFromSource name $ liftExceptPure $ parseJass name code
 
-loadJassModuleFromFile :: FilePath -> ExceptT String IO ParsedModule
+loadJassModuleFromFile :: FilePath -> ExceptT String IO JassProgram
 loadJassModuleFromFile path = loadJassFromSource path $ liftExcept $ parseJassFile path
 
-loadJassFromSource :: String -> ExceptT String IO JassModule -> ExceptT String IO ParsedModule
+loadJassFromSource :: String -> ExceptT String IO JassModule -> ExceptT String IO JassProgram
 loadJassFromSource modName source = do
   tree <- source
-  context <- liftExceptPure $ checkModuleSemantic tree
+  context <- liftExceptPure $ checkModuleSemantic' tree
   triple <- liftExceptPure $ uncurry3 (generateLLVM modName) context
-  return $ uncurry3 ParsedModule triple
+  return $ uncurry3 JassProgram triple
+---
 
-withRaisedAST :: Context -> ParsedModule -> (UnlinkedModule -> ExceptT String IO a) -> ExceptT String IO a
-withRaisedAST cntx (ParsedModule mapping tmap module') f = do
+withRaisedAST :: Context -> JassProgram -> (UnlinkedProgram -> ExceptT String IO a) -> ExceptT String IO a
+withRaisedAST cntx (JassProgram mapping tmap module') f = do
   let map' = nativesMapFromMapping mapping
-  res <- withModuleFromAST cntx module' $ \mod' -> runExceptT $ f $ UnlinkedModule map' tmap mod'
+  res <- withModuleFromAST cntx module' $ \mod' -> runExceptT $ f $ UnlinkedProgram map' tmap mod'
   liftExceptPure res
 
-moduleAssembly :: UnlinkedModule -> ExceptT String IO String
-moduleAssembly (UnlinkedModule _ _ llvmModule) = liftIO $ moduleLLVMAssembly llvmModule
+moduleAssembly :: UnlinkedProgram -> ExceptT String IO String
+moduleAssembly (UnlinkedProgram _ _ llvmModule) = liftIO $ moduleLLVMAssembly llvmModule
 
-optimizeModule :: UnlinkedModule -> ExceptT String IO ()
-optimizeModule (UnlinkedModule _ _ llvmModule) = liftIO $ void $ withPassManager set $ \ mng -> runPassManager mng llvmModule
+optimizeModule :: UnlinkedProgram -> ExceptT String IO ()
+optimizeModule (UnlinkedProgram _ _ llvmModule) = liftIO $ void $ withPassManager set $ \ mng -> runPassManager mng llvmModule
   where set = defaultCuratedPassSetSpec {
                 optLevel = Just 3
               , simplifyLibCalls = Just True
@@ -61,8 +63,8 @@ optimizeModule (UnlinkedModule _ _ llvmModule) = liftIO $ void $ withPassManager
               , useInlinerWithThreshold = Just 1000
               }
   
-withJassJIT :: Context -> NativeTableMaker -> UnlinkedModule -> (JITModule -> ExceptT String IO a) -> ExceptT String IO a
-withJassJIT cntx nativesMaker (UnlinkedModule nativesMap tmap llvmModule) action = 
+withJassJIT :: Context -> NativeTableMaker -> UnlinkedProgram -> (JITModule -> ExceptT String IO a) -> ExceptT String IO a
+withJassJIT cntx nativesMaker (UnlinkedProgram nativesMap tmap llvmModule) action = 
   liftExcept $ withJIT cntx 3 $ \jit -> withModuleInEngine jit llvmModule $ \exModule -> runExceptT $ do
     let jitModule = JITModule tmap exModule
     natives <- nativesMaker jitModule

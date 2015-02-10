@@ -5,6 +5,7 @@ module Language.Jass.Parser.AST(
 import Language.Jass.JassType as ReExports
 import Language.Jass.Parser.SourcePos as ReExports
 import Language.Jass.Parser.AST.JassModule as ReExports
+import Language.Jass.Parser.AST.Import as ReExports
 import Language.Jass.Parser.AST.TypeDef as ReExports
 import Language.Jass.Parser.AST.GlobalVar as ReExports
 import Language.Jass.Parser.AST.LocalVar as ReExports

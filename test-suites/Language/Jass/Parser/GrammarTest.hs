@@ -66,7 +66,7 @@ nosrc = SrcPos "" 0 0
 
 simpleParsing :: TestTree
 simpleParsing = testGroup "hello world parsing"
-  [ testCase "hello world" $ testJassFile' "tests/hello.j" (JassModule nosrc [] [] [
+  [ testCase "hello world" $ testJassFile' "tests/hello.j" (JassModule nosrc [] [] [] [
       NativeDecl nosrc False (FunctionDecl nosrc "writeln" [Parameter nosrc JString "msg"] Nothing)
     ] [
       Function nosrc False (FunctionDecl nosrc "main" [] Nothing) [] [
@@ -77,12 +77,12 @@ simpleParsing = testGroup "hello world parsing"
   
 syntaxTests :: TestTree
 syntaxTests = testGroup "Syntax tests"
-    [ testCase "empty module" $ parseTestModule "" (JassModule nosrc [] [] [] []),
+    [ testCase "empty module" $ parseTestModule "" (JassModule nosrc [] [] [] [] []),
       testCase "Type declarations" $
         parseTestModule
             ("type widget extends handle\n" ++
             "type destructable extends widget")
-            (JassModule nosrc [
+            (JassModule nosrc [] [
                 TypeDef nosrc "widget" JHandle,
                 TypeDef nosrc "destructable" (JUserDefined "widget")
             ] [] [] []),
@@ -112,7 +112,7 @@ syntaxTests = testGroup "Syntax tests"
               "constant real      bj_PI                            = 3.14159\n" ++
               "force              bj_FORCE_ALL_PLAYERS        = null\n" ++
            "endglobals")
-          (JassModule nosrc [] [
+          (JassModule nosrc [] [] [
             GlobalVar nosrc False False JReal "global1" Nothing,
             GlobalVar nosrc False False JInteger "global2" (Just $ IntegerLiteral nosrc 0),
             GlobalVar nosrc True False JReal "global3" (Just $ RealLiteral nosrc 3.14),
@@ -129,7 +129,7 @@ syntaxTests = testGroup "Syntax tests"
            "native function2 takes nothing returns widget\n" ++
            "native function3 takes integer par1, code par2 returns handle\n" ++
            "constant native function4 takes nothing returns nothing")
-          (JassModule nosrc [] [] [
+          (JassModule nosrc [] [] [] [
               NativeDecl nosrc False (FunctionDecl nosrc "function1" [] Nothing),
               NativeDecl nosrc False (FunctionDecl nosrc "function2" [] (Just $ JUserDefined "widget")),
               NativeDecl nosrc False (FunctionDecl nosrc "function3" [
@@ -141,35 +141,35 @@ syntaxTests = testGroup "Syntax tests"
         parseTestModule
             ("function simple takes nothing returns nothing\n" ++
              "endfunction")
-            (JassModule nosrc [] [] [] [
+            (JassModule nosrc [] [] [] [] [
                 Function nosrc False (FunctionDecl nosrc "simple" [] Nothing) [] []
             ]),
       testCase "constant function" $
         parseTestModule
             ("constant function simple takes nothing returns nothing\n" ++
              "endfunction")
-            (JassModule nosrc [] [] [] [
+            (JassModule nosrc [][] [] [] [
                 Function nosrc True (FunctionDecl nosrc "simple" [] Nothing) [] []
             ]),
       testCase "function with return type" $
         parseTestModule
             ("function simple takes nothing returns widget\n" ++
              "endfunction")
-            (JassModule nosrc [] [] [] [
+            (JassModule nosrc [] [] [] [] [
                 Function nosrc False (FunctionDecl nosrc "simple" [] (Just (JUserDefined "widget"))) [] []
             ]),
       testCase "function with parameters" $
         parseTestModule
             ("function simple takes integer par1, real par2, handle par3 returns nothing\n" ++
              "endfunction")
-            (JassModule nosrc [] [] [] [
+            (JassModule nosrc [] [] [] [] [
                 Function nosrc False (FunctionDecl nosrc "simple" [Parameter nosrc JInteger "par1", Parameter nosrc JReal "par2", Parameter nosrc JHandle "par3"] Nothing) [] []
             ]),
       testCase "function with parameters" $
         parseTestModule
             ("function simple takes widget par1, location par2, handle par3 returns nothing\n" ++
              "endfunction")
-            (JassModule nosrc [] [] [] [
+            (JassModule nosrc [] [] [] [] [
                 Function nosrc False (FunctionDecl nosrc "simple" [
                   Parameter nosrc (JUserDefined "widget") "par1", 
                   Parameter nosrc (JUserDefined "location") "par2", 

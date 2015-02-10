@@ -32,7 +32,7 @@ lexer = Tok.makeTokenParser style
        , "mod", "and", "or", "not", "native", "returns", "take", "globals", "endglobals"
        , "nothing", "native", "endfunction", "local", "array"
        , "set", "call", "if", "then", "endif", "elseif", "else"
-       , "loop", "endloop", "exitwhen", "return", "debug"]
+       , "loop", "endloop", "exitwhen", "return", "debug", "import"]
     --lexeme = Tok.lexeme emptyDef
     style = emptyDef {
       Tok.commentLine = "//",

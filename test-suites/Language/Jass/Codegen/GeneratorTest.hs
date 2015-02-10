@@ -243,7 +243,7 @@ checkCode jit = do
     exec0 = callFunc0 jit
          
 simpleCodegenTest :: TestTree
-simpleCodegenTest = let dbgFlag = False in testGroup "jass helloworld"
+simpleCodegenTest = let dbgFlag = False in testGroup "jass codegeneration"
   [ testCase "hello.j" $ checkJassFile "tests/hello.j" dbgFlag makeNativeTable checkHello,
     testCase "math.j" $ checkJassFile "tests/math.j" dbgFlag makeEmptyNativeTable checkMath,
     testCase "global.j" $ checkJassFile "tests/global.j" dbgFlag makeEmptyNativeTable checkGlobal,
