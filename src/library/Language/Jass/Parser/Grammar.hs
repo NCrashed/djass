@@ -31,13 +31,22 @@ getPosition' = do
 jassModule :: JassParser JassModule
 jassModule = do
     pos <- getPosition'
+    imports <- many parseImport
     trios <- many $ 
         try (fmap TrioFirst (many1 typeDef)) <|>
         try (fmap TrioSecond globalVars) <|>
         try (fmap TrioThird (many1 nativeDecl))
     funcs <- many function
-    return $ parseJassModule pos trios funcs 
-    
+    return $ parseJassModule pos imports trios funcs 
+
+parseImport :: JassParser Import
+parseImport = do
+  pos <- getPosition'
+  reserved "import"
+  qualParts <- identifier `sepBy1` char '.'
+  let moduleName = foldr1 (\w s -> w ++ '.':s) qualParts
+  return $ Import pos moduleName
+  
 typeDef :: JassParser TypeDef
 typeDef = do
   pos <- getPosition'
@@ -251,9 +260,9 @@ parseBinaryExpression :: SrcPos -> Expression -> Maybe (BinaryOperator, Expressi
 parseBinaryExpression _ left Nothing = left
 parseBinaryExpression pos left (Just (op, right)) = BinaryExpression pos op left right
 
-parseJassModule :: SrcPos -> [Trio [TypeDef] [GlobalVar] [NativeDecl]] -> [Function] -> JassModule
-parseJassModule pos trios functions = let (tdefs, gvars, natives) = foldl accTrios ([], [], []) trios 
-  in JassModule pos tdefs gvars natives functions
+parseJassModule :: SrcPos -> [Import] -> [Trio [TypeDef] [GlobalVar] [NativeDecl]] -> [Function] -> JassModule
+parseJassModule pos imports trios functions = let (tdefs, gvars, natives) = foldl accTrios ([], [], []) trios 
+  in JassModule pos imports tdefs gvars natives functions
   where 
       accTrios (tdefs, gvars, natives) (TrioFirst tdefs') = (tdefs ++ tdefs', gvars, natives)
       accTrios (tdefs, gvars, natives) (TrioSecond gvars') = (tdefs, gvars++gvars', natives)

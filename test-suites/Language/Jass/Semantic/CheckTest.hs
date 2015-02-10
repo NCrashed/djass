@@ -14,7 +14,7 @@ checkJassFile path = do
   res <- parseJassFile path
   case res of
     Left err -> assertFailure (show err)
-    Right tree -> case checkModuleSemantic tree of
+    Right tree -> case checkModuleSemantic' tree of
       Left err -> assertFailure (show err)
       Right _ -> return ()
 
@@ -24,7 +24,7 @@ checkJassFiles paths = do
   trees <- forM reses $ \res -> case res of
     Left err -> assertFailure (show err) >> return undefined
     Right tree -> return tree
-  case checkModulesSemantic trees of
+  case checkModulesSemantic' trees of
     Left err -> assertFailure (show err)
     Right _ -> return ()
           

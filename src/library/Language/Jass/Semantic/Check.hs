@@ -2,7 +2,8 @@
 module Language.Jass.Semantic.Check(
   JassModule,
   checkModuleSemantic,
-  checkModulesSemantic
+  checkModuleSemantic',
+  checkModulesSemantic'
   ) where
 
 import Language.Jass.Parser.AST
@@ -12,25 +13,21 @@ import Control.Monad.ST
 import Control.Monad.State.Strict
 import Control.Monad.Error
 import Data.Maybe (isJust, fromJust, isNothing)
+import qualified Data.HashMap.Strict as HM
 import qualified Data.Foldable as F(forM_)
 
 class SemanticCheck a where
   checkSemantic :: a -> SemanticError -> JassSem s ()
- 
--- | Checks one module for semantic errors
-checkModuleSemantic :: JassModule -> Either SemanticError ([TypeDef], [Callable], [Variable])
-checkModuleSemantic m = runST $ evalStateT (runErrorT $ checkSemantic m noMsg >> freezeContext) =<< newContext
 
--- | Checks several modules for semantic errors
-checkModulesSemantic :: [JassModule] -> Either SemanticError ()
-checkModulesSemantic ms = runST $ evalStateT (runErrorT $
-  mapM_ (`checkSemantic` noMsg) ms) =<< newContext
-  
-instance SemanticCheck a => SemanticCheck [a] where
-  checkSemantic list err = mapM_ (`checkSemantic` err) list
-  
-instance SemanticCheck JassModule where
-  checkSemantic (JassModule _ types globals natives funcs) _ = do
+-- | Check module without imports 
+checkModuleSemantic' :: JassModule -> Either SemanticError ([TypeDef], [Callable], [Variable])
+checkModuleSemantic' = checkModuleSemantic HM.empty
+
+-- | depricated, glues together modules
+checkModulesSemantic' :: [JassModule] -> Either SemanticError ([TypeDef], [Callable], [Variable])
+checkModulesSemantic' mods = runST $ evalStateT (runErrorT $ mapM_ check mods >> freezeContext) =<< newContext
+  where
+  check (JassModule _ _ types globals natives funcs) = do
     checkSemantic types noMsg
     registerPrototypes $ fmap CallableNative natives
     registerPrototypes $ fmap CallableFunc funcs
@@ -40,6 +37,28 @@ instance SemanticCheck JassModule where
     where
       registerPrototypes = mapM_ registerCallable
       
+-- | Checks one module for semantic errors
+checkModuleSemantic :: HM.HashMap String JassModule -> JassModule -> Either SemanticError ([TypeDef], [Callable], [Variable])
+checkModuleSemantic importMap m = runST $ evalStateT (runErrorT $ check m >> freezeContext) =<< newContext
+  where 
+  checkImport (Import src mname) = 
+    case HM.lookup mname importMap of
+      Nothing -> throwError $ SemanticError src $ "Cannot find module '" ++ mname ++ "'"
+      Just module' -> check module'
+  check (JassModule _ imports types globals natives funcs) = do
+    mapM_ checkImport imports
+    checkSemantic types noMsg
+    registerPrototypes $ fmap CallableNative natives
+    registerPrototypes $ fmap CallableFunc funcs
+    checkSemantic globals noMsg
+    checkSemantic natives noMsg
+    checkSemantic funcs noMsg
+    where
+      registerPrototypes = mapM_ registerCallable
+    
+instance SemanticCheck a => SemanticCheck [a] where
+  checkSemantic list err = mapM_ (`checkSemantic` err) list
+  
 instance SemanticCheck JassType where
   checkSemantic (JUserDefined name) err = do
     t <- getType name
@@ -59,10 +78,15 @@ instance SemanticCheck TypeDef where
     
 instance SemanticCheck Variable where
   checkSemantic var _ = do
+    checkVarType
     checkRedefinition
     checkInitializer
     checkCodeArray
     where
+      -- | Fails if variable type isn't exists
+      checkVarType = checkSemantic (getVarType var) $ SemanticError (getVarPos var) $ 
+        "Type of variable '" ++ show (getVarType var) ++ "' isn't known"
+        
       -- | Fails if variable already exists
       checkRedefinition = do
         let name = getVarName var
