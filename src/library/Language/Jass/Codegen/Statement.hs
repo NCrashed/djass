@@ -170,11 +170,15 @@ genLLVMStatement (LoopStatement _ _ stmts) = do
   pushNewBlock preBlock
   
   afterBlock <- generateName "block_loop_after"
+  savedRet <- getLoopReturnMaybe
   saveLoopReturn afterBlock
   (loopStart, loopBlocks) <- genBlocks stmts preBlock
   finishCurrentBlock (Br loopStart [])
   pushBlocks loopBlocks
   pushNewBlock afterBlock
+  case savedRet of
+    Nothing -> return ()
+    Just ret -> saveLoopReturn ret
 genLLVMStatement (ExitWhenStatement _ cond) = do
   (condName, condInstr) <- genLLVMExpression cond
   retName <- getLoopReturn

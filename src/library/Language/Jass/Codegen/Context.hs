@@ -31,6 +31,7 @@ module Language.Jass.Codegen.Context(
   -- | Loop utilities
   , saveLoopReturn
   , getLoopReturn
+  , getLoopReturnMaybe
   -- | Natives mapping
   , NativesMapping
   , addNativeMapping
@@ -281,6 +282,9 @@ getLoopReturn = do
   case contextLoopReturn context of
     Nothing -> throwError $ strMsg "ICE: nude exitwhen is occured"
     Just nm -> return nm   
+
+getLoopReturnMaybe :: Codegen (Maybe LLVM.Name)
+getLoopReturnMaybe = fmap contextLoopReturn get 
     
 getCurrentFunction :: Codegen String
 getCurrentFunction = fmap contextCurrentFunction get
