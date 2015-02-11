@@ -1,5 +1,6 @@
 globals
 	real array a
+	boolean array c
 endglobals
 
 function setA takes integer i, real value returns nothing
@@ -8,6 +9,15 @@ endfunction
 
 function getA takes integer i returns real
   return a[i]
+endfunction
+
+function setC takes integer i, boolean value returns nothing
+  set c[i] = false // test literal setting
+  set c[i] = value
+endfunction
+
+function getC takes integer i returns boolean
+  return c[i]
 endfunction
 
 function testLocalArray takes integer n returns integer

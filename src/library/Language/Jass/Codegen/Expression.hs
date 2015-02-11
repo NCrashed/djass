@@ -104,7 +104,7 @@ genLLVMExpression (VariableReference _ varName) = do
     
 genLLVMExpression (IntegerLiteral _ val) = allocLiteral JInteger $ Const.Int 32 $ toInteger val
 genLLVMExpression (RealLiteral _ val) = allocLiteral JReal $ Const.Float $ Single val
-genLLVMExpression (BoolLiteral _ val) = allocLiteral JReal $ Const.Int 1 $ if val then 1 else 0
+genLLVMExpression (BoolLiteral _ val) = allocLiteral JBoolean $ Const.Int 1 $ if val then 1 else 0
 genLLVMExpression (NullLiteral _) = do
   tp <- toLLVMType JHandle
   allocLiteral JHandle $ Const.Null tp
