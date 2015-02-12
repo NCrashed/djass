@@ -160,7 +160,7 @@ function printValidNumbers takes nothing returns nothing
     call write(I2S(numbers[i]) + " ") 
     set i = i + 1
   endloop
-  call writeln()
+  call writeln("")
 endfunction
 
 function play takes nothing returns nothing
