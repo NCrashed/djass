@@ -14,3 +14,8 @@ endfunction
 function getGlobalJ takes nothing returns string
 	return j
 endfunction
+
+function checkParamSet takes integer value returns integer
+  set value = value + 1
+  return value
+endfunction

@@ -149,7 +149,11 @@ foreign import ccall "dynamic"
 type GetGlobalJFunc = IO CString
 foreign import ccall "dynamic"
   mkGetGlobalJFunc :: FunPtr GetGlobalJFunc -> GetGlobalJFunc
-     
+
+type CheckParamSet = CInt -> IO CInt
+foreign import ccall "dynamic"
+  mkCheckParamSet :: FunPtr CheckParamSet -> CheckParamSet
+  
 checkGlobal :: JITModule -> ExceptT String IO ()
 checkGlobal jit = do
   globalI1 <- exec0 "getGlobalI" mkGetGlobalIFunc
@@ -159,6 +163,8 @@ checkGlobal jit = do
   liftIO $ globalI2 @?= 23
   globalJ2 <- fromJass =<< exec0 "getGlobalJ" mkGetGlobalJFunc
   liftIO $ globalJ2 @?= "Hello!"
+  resInc <- exec1 "checkParamSet" mkCheckParamSet 41
+  liftIO $ resInc @?= 42
   where
     exec0 = callFunc0 jit
     exec1 = callFunc1 jit
@@ -213,7 +219,7 @@ foreign import ccall "dynamic"
 type MyGetB = IO CFloat
 foreign import ccall "dynamic"
   mkMyGetB :: FunPtr MyGetB -> MyGetB
-    
+      
 type NativeSetCallback = JassCodeRef -> IO ()
 nativeSetCallback :: JITModule -> NativeSetCallback
 nativeSetCallback jit adr = do

@@ -102,9 +102,21 @@ instance LLVMDefinition Callable where
       genBasicBlocks :: Codegen [BasicBlock]
       genBasicBlocks = do
         entryBlockName <- generateName "entry"
-        (_, localsBlocks) <- foldM genLocal (entryBlockName, []) $ reverse locals
+        (localsFirstBlock, localsBlocks) <- foldM genLocal (entryBlockName, []) $ reverse locals
+        (_, paramsBlocks) <- foldM genParameter (localsFirstBlock, []) $ reverse pars
         bodyBlocks <- genBodyBlocks entryBlockName stmts
-        return $ localsBlocks ++ bodyBlocks
+        return $ paramsBlocks ++ localsBlocks ++ bodyBlocks
+        
+      -- | Generates variables for function parameters
+      genParameter :: (Name, [BasicBlock]) -> AST.Parameter -> Codegen (Name, [BasicBlock])
+      genParameter (nextBlock, acc) (AST.Parameter _ jt varName) = do
+        llvmType <- toLLVMType jt
+        let pBlockName = Name $ "block_" ++ varName
+        let newBlock = BasicBlock pBlockName [
+                      Name varName := Alloca llvmType Nothing 0 [],
+                      Do $ Store False (LocalReference (ptr llvmType) (Name varName)) (LocalReference llvmType $ Name $ "par_"++varName) Nothing 0 []]
+                      (Do $ Br nextBlock [])
+        return (pBlockName, newBlock:acc)
         
       -- | Generates local block, attaches it to previous block and saves in accumulator
       genLocal :: (Name, [BasicBlock]) -> LocalVar -> Codegen (Name, [BasicBlock])
@@ -156,4 +168,4 @@ genFunctionHeader fname pars retType = do
 convParam :: AST.Parameter -> Codegen LLVM.Parameter
 convParam (AST.Parameter _ pt pname) = do
   llvmt <- toLLVMType pt
-  return $ LLVM.Parameter llvmt (Name pname) []
+  return $ LLVM.Parameter llvmt (Name ("par_"++pname)) []

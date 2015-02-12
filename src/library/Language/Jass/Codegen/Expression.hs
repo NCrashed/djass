@@ -96,11 +96,9 @@ genLLVMExpression (FunctionReference _ nm) = do
     Nothing -> throwError $ strMsg $ "ICE: cannot find function " ++ nm
     Just callable -> generateCodeValue callable
 genLLVMExpression (VariableReference _ varName) = do
-  isPar <- isParameter varName
-  if isPar then return (Name varName, []) else do
-    opName <- generateName "varptr"
-    (_, ref) <- getReference varName
-    return (opName, [opName := Load False ref Nothing 0 []])
+  opName <- generateName "varptr"
+  (_, ref) <- getReference varName
+  return (opName, [opName := Load False ref Nothing 0 []])
     
 genLLVMExpression (IntegerLiteral _ val) = allocLiteral JInteger $ Const.Int 32 $ toInteger val
 genLLVMExpression (RealLiteral _ val) = allocLiteral JReal $ Const.Float $ Single val
