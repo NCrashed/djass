@@ -112,7 +112,8 @@ executable hjass-examples
                    base >= 4,
                    transformers >= 0.3,
                    transformers-compat >= 0.3,
-                   hjass >=0.1
+                   hjass >=0.1,
+                   random >=1.1 && <1.2
   ghc-options:     -Wall
   hs-source-dirs:  src/examples
   main-is:         Main.hs
