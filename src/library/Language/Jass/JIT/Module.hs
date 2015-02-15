@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module Language.Jass.JIT.Module(
     ExtractAST(..)
   , JassProgram(..)
@@ -21,13 +22,14 @@ import Foreign.Ptr
 import Data.HashMap.Strict as HM
 import Data.Either
 import Data.List (nub)
+import Data.Typeable
 
 -- | Compiled module with unset natives
-data JassProgram = JassProgram NativesMapping TypesMap LLVMAST.Module
+data JassProgram = JassProgram NativesMapping TypesMap LLVMAST.Module deriving Typeable
 -- | Raised into llvm module
 data UnlinkedProgram = UnlinkedProgram NativesMap TypesMap LLVM.Module
 -- | Executing module
-data JITModule = JITModule TypesMap (ExecutableModule JIT)
+data JITModule = JITModule TypesMap (ExecutableModule JIT) deriving Typeable
 
 type NativesMap = HashMap String (Either LLVMAST.Name (LLVMAST.Name, FunPtr ()))
 
