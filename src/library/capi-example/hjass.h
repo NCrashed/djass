@@ -94,4 +94,15 @@ typedef long (*hjassExecutingCallback)(hjassJITModule module, char** error);
 extern long hjassExecuteProgram(hjassJassProgram program, hjassNativeMaker nativeMaker
 		, hjassExecutingCallback executingCallback);
 
+/// Returns function pointer in JASS program, user should know actual return type and parameters types of returned function
+/**
+ * Loads JASS function pointer from JIT module and stores the pointer in last parameter.
+ * @param[in] jit      JASS executing module
+ * @param[in] funcName name of JASS function in *jit* module
+ * @param[out] fptr    where to store function pointer, isn't set if an error is occured
+ * @return zero value is threated as an error, and a message could be read by *hjassGetLastError*, *fptr* parameter isn't set 
+ * if there is an error.
+ */
+extern long hjassGetJassFuncPtr(hjassJITModule jit, const char* funcName, hjassGenericNative* fptr);
+
 #endif

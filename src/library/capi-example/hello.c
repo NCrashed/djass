@@ -3,7 +3,7 @@
 
 void nativeWriteln(char* msg)
 {
-	printf("%s", msg);
+	printf("%s\n", msg);
 }
 
 #define NATIVES_COUNT 1
@@ -18,13 +18,21 @@ hjassGenericNative nativesPtrArr[NATIVES_COUNT] = {
 
 long nativeMaker(hjassJITModule module, char*** nativesNames, hjassGenericNative** nativesPtrs, char** error)
 {
-	*nativesNames = nativesNamesArr;
-	*nativesPtrs = nativesNamesArr;
+	*nativesNames = &nativesNamesArr[0];
+	*nativesPtrs = &nativesPtrArr[0];
 	return NATIVES_COUNT;
 }
 
 long execJass(hjassJITModule module, char** error)
 {
+	hjassGenericNative ptr;
+	long res = hjassGetJassFuncPtr(module, "main", &ptr);
+	if(!res) {
+		*error = hjassGetLastError();
+		return 0;
+	}
+
+	ptr();
 	return 1;
 }
 
