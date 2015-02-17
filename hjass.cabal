@@ -30,11 +30,15 @@ library
                    containers >= 0.4.2.1,
                    directory,
                    filepath >=1.3 && <1.4,
-                   system-fileio >=0.3 && <0.4
+                   system-fileio >=0.3 && <0.4,
+                   hashable
+                   
   ghc-options:       -Wall
   default-language:  Haskell2010
+  c-sources:       src/library/hjass.c
   hs-source-dirs:    src/library
   exposed-modules:   
+                     Language.Jass.CAPI.Program,
                      Language.Jass.Codegen.Context,
                      Language.Jass.Codegen.Expression,
                      Language.Jass.Codegen.Generator,
@@ -75,6 +79,12 @@ library
                      Language.Jass.Semantic.Variable,
                      Language.Jass.ShowIndent,
                      Language.Jass.Utils
+  other-modules:   
+                   Data.Global,
+                   Data.Global.Registry,
+                   Language.Jass.CAPI.Base,
+                   Language.Jass.CAPI.JIT.Calling,
+                   Language.Jass.CAPI.JIT.Module
 
 test-suite all-tests
   type:              exitcode-stdio-1.0
@@ -100,11 +110,14 @@ test-suite all-tests
                   QuickCheck,
                   directory,
                   filepath >=1.3 && <1.4,
-                  system-fileio >=0.3 && <0.4
+                  system-fileio >=0.3 && <0.4,
+                  hashable
+                  
   default-language:  Haskell2010
   hs-source-dirs:    
                   src/library,
                   test-suites
+  other-modules:     Language.Jass.CAPI.JIT.Module
 
 executable hjass-examples
   default-language:  Haskell2010
@@ -113,7 +126,8 @@ executable hjass-examples
                    transformers >= 0.3,
                    transformers-compat >= 0.3,
                    hjass >=0.1,
-                   random >=1.1 && <1.2
+                   random >=1.1 && <1.2,
+                   hashable
   ghc-options:     -Wall
   hs-source-dirs:  src/examples
   main-is:         Main.hs
