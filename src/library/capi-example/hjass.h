@@ -30,7 +30,7 @@ typedef long hjassJITModule;
 
 /// Returns last error of hjass API
 /**
- * Returned string should be released by free
+ * Returned string should NOT be released
  */
 extern char* hjassGetLastError();
 
