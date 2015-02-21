@@ -2,6 +2,7 @@ module Language.Jass.Runtime.Code(
     codeTypeStruct  
   , getCodeTypeDefs
   , generateCodeValue
+  , getFreeCodeFuncName
   , getCodePtrFuncName
   , getCodeReturnTypeFuncName
   , getCodeArgsCountFuncName
@@ -40,7 +41,7 @@ data JassCode = JassCode {
 
 -- | Returns LLVM definitions to paste into runtime
 getCodeTypeDefs :: [Definition]
-getCodeTypeDefs = [getCodeTypeAlias, getCodePtrFunc, getCodeReturnTypeFunc, getCodeArgsCountFunc, getCodeArgFunc]
+getCodeTypeDefs = [getCodeTypeAlias, getCodePtrFunc, getCodeReturnTypeFunc, getCodeArgsCountFunc, getCodeArgFunc, freeCodePtr]
 
 -- | Allocates new code value for callable
 generateCodeValue :: Callable -> Codegen (Name, [Named Instruction])
@@ -95,7 +96,29 @@ generateCodeValue callable = do
     -- placing arguments ids
     ++ concat argIdsInstructions
     )
-  
+
+-- | Internal name of jass runtime function to free code reference
+getFreeCodeFuncName :: String
+getFreeCodeFuncName = "$__jass__freeCodePtr"
+
+type FreeCodeFunc = JassCodeRef -> IO ()
+foreign import ccall "dynamic"
+  mkFreeCodeFunc :: FunPtr FreeCodeFunc -> FreeCodeFunc
+
+freeCodePtr :: Definition
+freeCodePtr = GlobalDefinition $ functionDefaults {
+  returnType = VoidType,
+  name = Name getFreeCodeFuncName,
+  parameters = ([LLVM.Parameter (ptr codeTypeStruct) (Name "codePtr") []], False),
+  basicBlocks = [
+    BasicBlock (Name "entry") [
+      Name "casted" := bitcast (LocalReference (ptr codeTypeStruct) (Name "codePtr")) (ptr i8),
+      Do $ globalCall VoidType freeMemoryFuncName [LocalReference (ptr i8) $ Name "casted"]
+    ]
+    (Do retVoid)
+  ]
+}
+
 getCodeTypeAlias :: Definition
 getCodeTypeAlias = TypeDefinition (Name "code") (Just codeTypeStruct)
 
@@ -198,6 +221,7 @@ liftJassCode jit@(JITModule tm _) jcode = do
   argIds <- mapM (callFunc2 jit getCodeArgFuncName mkGetCodeArgTypeFunc jcode) [0 .. argc-1]
   retType <- if retid == 0 then return Nothing else Just <$> lookup' (fromIntegral retid) tm
   argsTypes <- mapM (`lookup'` tm) (fmap fromIntegral argIds)
+  callFunc1 jit getFreeCodeFuncName mkFreeCodeFunc jcode
   return JassCode {
     codeFunctionPtr = fptr,
     codeReturnType = retType,
