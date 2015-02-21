@@ -1,4 +1,6 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE 
+ DeriveDataTypeable,
+ DeriveGeneric #-}
 module Language.Jass.JassType(
   JassType(..),
   isBasicType
@@ -6,6 +8,8 @@ module Language.Jass.JassType(
 
 import Language.Jass.ShowIndent
 import Data.Typeable
+import Data.Hashable
+import GHC.Generics (Generic)
 
 -- | Supported types
 data JassType = JInteger | JReal | JBoolean | JString 
@@ -14,7 +18,9 @@ data JassType = JInteger | JReal | JBoolean | JString
     | JCode 
     | JArray JassType 
     | JUserDefined String
-    deriving (Eq, Ord, Typeable)
+    deriving (Eq, Ord, Typeable, Generic)
+
+instance Hashable JassType
 
 instance Show JassType where
   show = showIndent 0

@@ -37,6 +37,7 @@ import LLVM.General.AST.Float
 import LLVM.General.AST.DataLayout
 import LLVM.General.AST.AddrSpace
 import Control.Applicative
+import Control.Arrow
 import Control.Monad.Error
 import Language.Jass.Semantic.Callable
 import Language.Jass.Semantic.Variable
@@ -199,11 +200,13 @@ getTypeFromId n
   | n > 256 = fmap JArray <$> getTypeFromId (n - 256)
   | otherwise = throwError $ strMsg $ "ICE: unknown id of type '" ++ show n ++ "'" 
   
-type TypesMap = HM.HashMap Int JassType
+type TypesMap = (HM.HashMap Int JassType, HM.HashMap JassType Int) 
 
 getTypeMap :: Codegen TypesMap
 getTypeMap = do
   let ts = [JInteger, JReal, JBoolean, JString, JHandle, JCode]
   basic <- mapM getTypeId (fmap Just ts)
-  custom <- fmap JUserDefined <$> getCustomTypes
-  return $ HM.fromList (basic `zip` ts) `HM.union` custom
+  custom <- second (HM.fromList . fmap (first JUserDefined) . HM.toList) <$> first (fmap JUserDefined) <$> getCustomTypes  
+  return $ (
+    HM.fromList (basic `zip` ts) `HM.union` (fst custom),
+    HM.fromList (ts `zip` basic) `HM.union` (snd custom))

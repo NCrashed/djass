@@ -88,11 +88,7 @@ cExecuteProgram :: CProgram -- ^ Descriptor of program
   -> FunPtr CNativeMaker -- ^ native table callback
   -> FunPtr CExecutingCallback -- ^ executing callback
   -> IO CInt -- ^ zero return is error, error could be read via hjassGetLastError
-cExecuteProgram cprog cnativeMaker cexecCallback = do
-  mprog <- lookupProgramTable cprog
-  case mprog of
-    Nothing -> setLastError "invalid program handle" >> return 0
-    Just prog -> saveZeroBasedError $ 
+cExecuteProgram cprog cnativeMaker cexecCallback = withProgramRef cprog $ \prog -> saveZeroBasedError $ 
       executeProgram prog (makeNativeMaker cnativeMaker) (makeExecutingCallback cexecCallback) 
       
 foreign export ccall "hjassExecuteProgram" cExecuteProgram :: CProgram -> FunPtr CNativeMaker -> FunPtr CExecutingCallback -> IO CInt

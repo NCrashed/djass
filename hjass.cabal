@@ -84,7 +84,9 @@ library
                    Data.Global.Registry,
                    Language.Jass.CAPI.Base,
                    Language.Jass.CAPI.JIT.Calling,
-                   Language.Jass.CAPI.JIT.Module
+                   Language.Jass.CAPI.JIT.Module,
+                   Language.Jass.CAPI.JassType,
+                   Language.Jass.CAPI.Runtime.Code
 
 test-suite all-tests
   type:              exitcode-stdio-1.0
@@ -117,7 +119,9 @@ test-suite all-tests
   hs-source-dirs:    
                   src/library,
                   test-suites
-  other-modules:     Language.Jass.CAPI.JIT.Module
+  other-modules:     
+                     Language.Jass.CAPI.JIT.Module,
+                     Language.Jass.CAPI.Runtime.Code
 
 executable hjass-examples
   default-language:  Haskell2010

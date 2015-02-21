@@ -367,5 +367,5 @@ getCustomTypeFromId i = do
     Just n -> return n
     
 -- | Returns accumulated mapping from ids to custom types names
-getCustomTypes :: Codegen (HM.HashMap Int String)
-getCustomTypes = id2type <$> get
+getCustomTypes :: Codegen (HM.HashMap Int String, HM.HashMap String Int)
+getCustomTypes = (,) <$> (id2type <$> get) <*> (type2id <$> get)

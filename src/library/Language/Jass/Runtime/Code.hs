@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module Language.Jass.Runtime.Code(
     codeTypeStruct  
   , getCodeTypeDefs
@@ -29,6 +30,7 @@ import Control.Monad.Trans.Except
 import Control.Applicative
 import Foreign.Ptr
 import Foreign.C.Types
+import Data.Typeable
 
 -- | Jass side
 type JassCodeRef = Ptr ()
@@ -37,7 +39,7 @@ data JassCode = JassCode {
   codeFunctionPtr :: FunPtr (),
   codeReturnType :: Maybe JassType,
   codeArgumentTypes :: [JassType]
-} 
+} deriving Typeable
 
 -- | Returns LLVM definitions to paste into runtime
 getCodeTypeDefs :: [Definition]
@@ -214,7 +216,7 @@ getCodeArgFunc = GlobalDefinition $ functionDefaults {
 liftJassCode :: JITModule -- ^ Loaded jass module the code value came from 
   -> JassCodeRef -- ^ code reference from jass module (e.x. passed by native or returned by func)  
   -> ExceptT String IO JassCode -- ^ Loaded jass code value, ready for executing
-liftJassCode jit@(JITModule tm _) jcode = do
+liftJassCode jit@(JITModule (tm, _) _) jcode = do
   fptr <- callFunc1 jit getCodePtrFuncName mkGetCodePtrFunc jcode
   retid <- callFunc1 jit getCodeReturnTypeFuncName mkGetCodeReturnTypeFunc jcode
   argc <- callFunc1 jit getCodeArgsCountFuncName mkGetCodeArgsCountTypeFunc jcode

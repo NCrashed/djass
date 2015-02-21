@@ -27,6 +27,10 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 typedef long hjassJassProgram;
 /// Descriptor of running JASS module
 typedef long hjassJITModule;
+/// Descriptor of JASS callback
+typedef long hjassJassCode;
+/// Descriptor of JASS type
+typedef long hjassType;
 
 /// Returns last error of hjass API
 /**
@@ -100,9 +104,137 @@ extern long hjassExecuteProgram(hjassJassProgram program, hjassNativeMaker nativ
  * @param[in] jit      JASS executing module
  * @param[in] funcName name of JASS function in *jit* module
  * @param[out] fptr    where to store function pointer, isn't set if an error is occured
- * @return zero value is threated as an error, and a message could be read by *hjassGetLastError*, *fptr* parameter isn't set 
+ * @return zero value is treated as an error, and a message could be read by *hjassGetLastError*, *fptr* parameter isn't set
  * if there is an error.
  */
 extern long hjassGetJassFuncPtr(hjassJITModule jit, const char* funcName, hjassGenericNative* fptr);
+
+/// Reads jass reference inner structure into hjassCode object
+/**
+ * @param[in] jit JASS executing module
+ * @param[in] ptr pointer to return type of type `code` from jass function
+ * @return zero value is treated as an error, and a message could be read by *hjassGetLastError*
+ */
+extern hjassJassCode hjassLiftCode(hjassJITModule jit, void* ptr);
+
+/// Frees inner hjassCode object
+/**
+ * @param[in] ref Reference to code reference that was got by hjassLiftCode
+ */
+extern void hjassFreeCode(hjassJassCode ref);
+
+/// Returns callback function pointer
+/**
+ * @param[in] ref   reference to JASS code callback
+ * @param[out] fptr here result is stored, pointer to callback function of code reference
+ * @return zero value is treated as an error, and a message could be read by *hjassGetLastError*,
+ * 	*fptr* isn't set if there is an error.
+ */
+extern long hjassCodeFunctionPtr(hjassJassCode ref, hjassGenericNative* fptr);
+
+/// Returns result type of JASS callback
+/**
+ * @param[in] jit reference to JASS executing module
+ * @param[in] ref reference to JASS callback
+ * @param[out] retptr here result is stored, JASS type reference (zero is special value for void return type)
+ * @return zero value is treated as an error, and a message could be read by *hjassGetLastError*,
+ * 	*retptr* isn't set if there is an error.
+ */
+extern long hjassCodeReturnType(hjassJITModule jit, hjassJassCode ref, hjassType* retptr);
+
+/// Returns arguments count of JASS callback
+/**
+ * @param[in] ref     reference to JASS callback
+ * @param[out] retptr here result is stored, number of JASS callback arguments
+ * @return zero value is treated as an error, and a message could be read by *hjassGetLastError*,
+ * 	*retptr* isn't set if there is an error.
+ */
+extern long hjassCodeArgumentCount(hjassJassCode ref, long* retptr);
+
+/// Returns argument type reference
+/**
+ * @param[in] jit   reference to JASS executing module
+ * @param[in] ref   reference to JASS callback
+ * @param[in] index zero based index of a parameter
+ * @param[out] retptr here result is stored, reference of JASS type
+ * @return zero value is treated as an error, and a message could be read by *hjassGetLastError*,
+ * 	*retptr* isn't set if there is an error.
+ */
+extern long hjassCodeGetArgument(hjassJITModule jit, hjassJassCode ref, long index, hjassType* retptr);
+
+/// Returns void type
+/**
+ * @param[in] jit	  reference to JASS executing module
+ * @param[out] retptr where to store result, requested type reference
+ * @return zero value is treated as an error, and a message could be read by *hjassGetLastError*
+ */
+extern long hjassVoid(hjassJITModule jit, hjassType* retptr);
+
+/// Returns integer type
+/**
+ * @param[in] jit	  reference to JASS executing module
+ * @param[out] retptr where to store result, requested type reference
+ * @return zero value is treated as an error, and a message could be read by *hjassGetLastError*
+ */
+extern long hjassInteger(hjassJITModule jit, hjassType* retptr);
+
+/// Returns real type
+/**
+ * @param[in] jit	  reference to JASS executing module
+ * @param[out] retptr where to store result, requested type reference
+ * @return zero value is treated as an error, and a message could be read by *hjassGetLastError*
+ */
+extern long hjassReal(hjassJITModule jit, hjassType* retptr);
+
+/// Returns boolean type
+/**
+ * @param[in] jit	  reference to JASS executing module
+ * @param[out] retptr where to store result, requested type reference
+ * @return zero value is treated as an error, and a message could be read by *hjassGetLastError*
+ */
+extern long hjassBoolean(hjassJITModule jit, hjassType* retptr);
+
+/// Returns string type
+/**
+ * @param[in] jit	  reference to JASS executing module
+ * @param[out] retptr where to store result, requested type reference
+ * @return zero value is treated as an error, and a message could be read by *hjassGetLastError*
+ */
+extern long hjassString(hjassJITModule jit, hjassType* retptr);
+
+/// Returns handle type
+/**
+ * @param[in] jit	  reference to JASS executing module
+ * @param[out] retptr where to store result, requested type reference
+ * @return zero value is treated as an error, and a message could be read by *hjassGetLastError*
+ */
+extern long hjassHandle(hjassJITModule jit, hjassType* retptr);
+
+/// Returns code (callback) type
+/**
+ * @param[in] jit	  reference to JASS executing module
+ * @param[out] retptr where to store result, requested type reference
+ * @return zero value is treated as an error, and a message could be read by *hjassGetLastError*
+ */
+extern long hjassCode(hjassJITModule jit, hjassType* retptr);
+
+/// Returns user defined type (based on one of basic types)
+/**
+ * @param[in] jit	  reference to JASS executing module
+ * @param[in] name    name of custom type
+ * @param[out] retptr where to store result, requested type reference
+ * @return zero value is treated as an error, and a message could be read by *hjassGetLastError*
+ */
+extern long hjassUserDefinedType(hjassJITModule jit, const char* name, hjassType* retptr);
+
+/// Returns string representation of JASS type
+/**
+ * @param[in] jit     reference to JASS executing module
+ * @param[in] type    reference to JASS type
+ * @param[out] result where to store result, string (name) of JASS type
+ * @return zero value is treated as an error, and a message could be read by *hjassGetLastError*
+ * @note You should free resulted string by yourself
+ */
+extern long hjassPrintType(hjassJITModule jit, hjassType type, char** result);
 
 #endif
