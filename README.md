@@ -7,7 +7,7 @@ Building
 ========
 
 * Install [stack](https://github.com/commercialhaskell/stack/wiki/Downloads):
-* Install llvm 3.4 (exact version), [here a tutorial for building from source](https://github.com/NCrashed/hjass/wiki/WindowsCompilation) (For GNU/Linux needs a little adoptation)
+* Install llvm 3.4 (exact version), [here a tutorial for building from source](https://github.com/NCrashed/hjass/wiki/WindowsCompilation#building-llvm) (For GNU/Linux needs a little adoptation)
 * Clone the repo
 * `stack setup`
 * `stack build`
