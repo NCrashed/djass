@@ -3,7 +3,6 @@ module Language.Jass.Codegen.MultiFileTest where
 
 import Language.Jass.Program
 import Language.Jass.TestUtils
-import Control.Applicative
 import Control.Monad.IO.Class
 
 import Test.Tasty

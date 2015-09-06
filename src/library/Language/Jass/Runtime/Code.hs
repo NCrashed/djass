@@ -27,7 +27,6 @@ import LLVM.General.AST.Type
 import LLVM.General.AST.Global
 import qualified Data.HashMap.Strict as HM
 import Control.Monad.Trans.Except
-import Control.Applicative
 import Foreign.Ptr
 import Foreign.C.Types
 import Data.Typeable

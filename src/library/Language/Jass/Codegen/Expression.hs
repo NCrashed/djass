@@ -16,8 +16,7 @@ import LLVM.General.AST.CallingConvention
 import LLVM.General.AST.Constant as Const
 import LLVM.General.AST.Float as Const
 import LLVM.General.AST.Type
-import Control.Applicative
-import Control.Monad.Error
+import Control.Monad.Except
 import Data.Char
 
 -- | Generates instruction to calculate 
@@ -30,7 +29,7 @@ genLLVMExpression (BinaryExpression _ op left right) = do
   rightJassType <- inferType right
   mgeneralType <- getGeneralType leftJassType rightJassType
   case mgeneralType of
-    Nothing -> throwError $ strMsg $ "ICE: cannot use types " ++ show leftJassType ++ " and " ++ show rightJassType ++ " at " ++ show op
+    Nothing -> throwError $ unplacedSemError $ "ICE: cannot use types " ++ show leftJassType ++ " and " ++ show rightJassType ++ " at " ++ show op
     Just JString -> if
       | op == Summ -> do
         let strAddCall = [opName := Call False C [] 
@@ -52,7 +51,7 @@ genLLVMExpression (BinaryExpression _ op left right) = do
                             LessEqual -> stringRelationInstrs LLVMI.NE 1
                             _ -> error $ "ICE: unknown relational operator " ++ show op
         return (opName, leftInstr ++ rightInstr ++ strCmpCall ++ strRelInstrs)
-      | otherwise -> throwError $ strMsg $ "ICE: unsupported operator " ++ show op ++ " for strings"
+      | otherwise -> throwError $ unplacedSemError $ "ICE: unsupported operator " ++ show op ++ " for strings"
     Just generalType -> do 
       (leftName, leftConvInstr) <- genConvertion leftJassType generalType leftNameRaw
       (rightName, rightConvInstr) <- genConvertion rightJassType generalType rightNameRaw
@@ -93,7 +92,7 @@ genLLVMExpression (FunctionCall _ funcName args) = do
 genLLVMExpression (FunctionReference _ nm) = do
   mc <- getCallable nm
   case mc of
-    Nothing -> throwError $ strMsg $ "ICE: cannot find function " ++ nm
+    Nothing -> throwError $ unplacedSemError $ "ICE: cannot find function " ++ nm
     Just callable -> generateCodeValue callable
 genLLVMExpression (VariableReference _ varName) = do
   opName <- generateName "varptr"
@@ -204,7 +203,7 @@ genConvertion JInteger JBoolean valName = convHelper JInteger JBoolean $ \tpSour
 genConvertion JBoolean JInteger valName = convHelper JBoolean JInteger $ \tpSource tpDist -> LLVM.ZExt (LocalReference tpSource valName) tpDist []
 genConvertion from to valName 
   | from == to = return (valName, [])
-  | otherwise = throwError $ strMsg $ "ICE: cannot convert from " ++ show from ++ " to " ++ show to 
+  | otherwise = throwError $ unplacedSemError $ "ICE: cannot convert from " ++ show from ++ " to " ++ show to 
 
 convHelper :: JassType -> JassType -> (Type -> Type -> Instruction) -> Codegen (Name, [Named Instruction]) 
 convHelper tSource tDist instr= do

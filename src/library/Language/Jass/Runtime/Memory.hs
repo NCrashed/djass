@@ -22,7 +22,6 @@ import LLVM.General.AST.CallingConvention
 import Control.Monad.Trans.Except
 import Control.Monad.Trans (liftIO)
 import Control.Monad as Monad
-import Control.Applicative
 import Foreign.C.Types
 import Foreign.Ptr
 import Foreign.Marshal.Array

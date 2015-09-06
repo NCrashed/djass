@@ -11,7 +11,6 @@ import Language.Jass.JIT.Module
 import Language.Jass.CAPI.JIT.Module
 import Language.Jass.CAPI.Base
 import qualified Data.HashMap.Strict as HM
-import Control.Applicative
 import Control.Monad.Trans.Except
 import Control.Monad.IO.Class
 

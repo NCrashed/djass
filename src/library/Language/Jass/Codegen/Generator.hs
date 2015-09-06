@@ -22,8 +22,7 @@ import LLVM.General.AST.Constant
 import LLVM.General.AST.Type
 import LLVM.General.AST.Linkage
 import Control.Monad
-import Control.Monad.Error
-import Control.Applicative
+import Control.Monad.Except
 
 generateLLVM :: String -> [TypeDef] -> [Callable] -> [Variable] -> Either SemanticError (NativesMapping, TypesMap, Module)
 generateLLVM modName types callables variables = runCodegen context $ do
@@ -67,7 +66,7 @@ instance LLVMDefinition Variable where
     genGlobal (JArray jt) varName isConst [] $ Just initVal
   genLLVM (VarGlobal (GlobalVar pos _ True _ _ (Just _))) = 
     throwError $ SemanticError pos "ICE: cannot generate variable with array initializer" 
-  genLLVM _ = throwError $ strMsg "ICE: cannot generate code for non-global vars at top level" 
+  genLLVM _ = throwError $ unplacedSemError "ICE: cannot generate code for non-global vars at top level" 
 
 -- | Generates global variable
 genGlobal :: JassType -> String -> Bool -> [Named Instruction] -> Maybe Constant -> Codegen ()
@@ -141,7 +140,7 @@ instance LLVMDefinition Callable where
         addEpilogueInstructions destructor
         return (localBlockName varName, newBlock:acc)
       genLocal _ (LocalVar _ True _ _ (Just _)) = 
-        throwError $ strMsg "ICE: cannot generate code for array expression at local variable initializator"
+        throwError $ unplacedSemError "ICE: cannot generate code for array expression at local variable initializator"
 
       genLocal' jt varName preInstr val nextBlock acc = do  
         llvmType <- toLLVMType jt

@@ -15,7 +15,7 @@ import Language.Jass.Parser.AST
 import Language.Jass.Semantic.Callable
 import Language.Jass.Semantic.Variable
 import Language.Jass.Semantic.Context
-import Control.Monad.Error
+import Control.Monad.Except
 import qualified Language.Jass.Codegen.Context as CG
 
 type Name = String
@@ -107,7 +107,7 @@ getRootType JNull = return JHandle
 getRootType (JUserDefined tname) = do
   mtype <- findTypeDef tname
   case mtype of 
-    Nothing -> throwError $ strMsg $ "Unknown type " ++ tname
+    Nothing -> throwError $ unplacedSemError $ "Unknown type " ++ tname
     Just type' -> getRootType $ getTypeBase type'
 getRootType a = return a
  
@@ -128,9 +128,9 @@ getGeneralType t1 t2
       mtype1 <- findTypeDef name1
       mtype2 <- findTypeDef name2
       case mtype1 of
-        Nothing -> throwError $ strMsg $ "Unknown type " ++ name1
+        Nothing -> throwError $ unplacedSemError $ "Unknown type " ++ name1
         Just type1 -> case mtype2 of
-          Nothing -> throwError $ strMsg $ "Unknown type " ++ name2
+          Nothing -> throwError $ unplacedSemError $ "Unknown type " ++ name2
           Just type2 -> let
             base1 = getTypeBase type1
             base2 = getTypeBase type2
@@ -141,11 +141,11 @@ getGeneralType t1 t2
   | JUserDefined name1 <- t1 = do
       mtype1 <- findTypeDef name1
       case mtype1 of
-        Nothing -> throwError $ strMsg $ "Unknown type " ++ name1
+        Nothing -> throwError $ unplacedSemError $ "Unknown type " ++ name1
         Just type1 -> getGeneralType (getTypeBase type1) t2
   | JUserDefined name2 <- t2 = do
       mtype2 <- findTypeDef name2
       case mtype2 of
-        Nothing -> throwError $ strMsg $ "Unknown type " ++ name2
+        Nothing -> throwError $ unplacedSemError $ "Unknown type " ++ name2
         Just type2 -> getGeneralType t1 (getTypeBase type2) 
 getGeneralType _ _ = return Nothing

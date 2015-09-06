@@ -18,7 +18,6 @@ import Language.Jass.Semantic.Check
 import Language.Jass.Codegen.Generator
 import Language.Jass.Utils
 import LLVM.General.Context
-import Control.Applicative
 import Control.Monad.Trans.Except
 import Control.Monad.IO.Class
 import Control.Monad

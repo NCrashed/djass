@@ -2,8 +2,7 @@ module Main where
 
 import Language.Jass.Program
 
-import Control.Monad.Trans.Except
-import Control.Applicative
+import Control.Monad.Except
 import Natives 
 
 runProgramm :: String -> ExceptT String IO ()

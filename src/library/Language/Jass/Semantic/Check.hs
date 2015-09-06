@@ -1,4 +1,5 @@
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Language.Jass.Semantic.Check(
   JassModule,
   checkModuleSemantic,
@@ -11,7 +12,7 @@ import Language.Jass.Semantic.Context
 import Language.Jass.Semantic.Type
 import Control.Monad.ST
 import Control.Monad.State.Strict
-import Control.Monad.Error
+import Control.Monad.Except
 import Data.Maybe (isJust, fromJust, isNothing)
 import qualified Data.HashMap.Strict as HM
 import qualified Data.Foldable as F(forM_)
@@ -25,7 +26,7 @@ checkModuleSemantic' = checkModuleSemantic HM.empty
 
 -- | depricated, glues together modules
 checkModulesSemantic' :: [JassModule] -> Either SemanticError ([TypeDef], [Callable], [Variable])
-checkModulesSemantic' mods = runST $ evalStateT (runErrorT $ mapM_ check mods >> freezeContext) =<< newContext
+checkModulesSemantic' mods = runST $ runJassSem $ mapM_ check mods >> freezeContext
   where
   check (JassModule _ _ types globals natives funcs) = do
     checkSemantic types noMsg
@@ -39,12 +40,12 @@ checkModulesSemantic' mods = runST $ evalStateT (runErrorT $ mapM_ check mods >>
       
 -- | Checks one module for semantic errors
 checkModuleSemantic :: HM.HashMap String JassModule -> JassModule -> Either SemanticError ([TypeDef], [Callable], [Variable])
-checkModuleSemantic importMap m = runST $ evalStateT (runErrorT $ check m >> freezeContext) =<< newContext
+checkModuleSemantic importMap m = runST $ runJassSem $ check m >> freezeContext
   where 
   checkImport (Import src mname) = 
     case HM.lookup mname importMap of
       Nothing -> throwError $ SemanticError src $ "Cannot find module '" ++ mname ++ "'"
-      Just module' -> check module'
+      Just m' -> check m'
   check (JassModule _ imports types globals natives funcs) = do
     mapM_ checkImport imports
     checkSemantic types noMsg

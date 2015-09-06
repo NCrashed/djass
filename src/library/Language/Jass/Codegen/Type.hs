@@ -36,9 +36,8 @@ import LLVM.General.AST.Constant as LLVM
 import LLVM.General.AST.Float
 import LLVM.General.AST.DataLayout
 import LLVM.General.AST.AddrSpace
-import Control.Applicative
 import Control.Arrow
-import Control.Monad.Error
+import Control.Monad.Except
 import Language.Jass.Semantic.Callable
 import Language.Jass.Semantic.Variable
 import qualified Data.Map.Lazy as ML
@@ -56,7 +55,7 @@ getReference name = do
     Just var -> do
       varType <- ptr <$> if isVarArray var then toLLVMType (JArray $ getVarType var) else toLLVMType (getVarType var)
       return (varType, if isGlobalVariable var then LLVM.ConstantOperand $ LLVM.GlobalReference varType (LLVM.Name name) else LLVM.LocalReference varType (LLVM.Name name))
-    Nothing -> throwError $ strMsg $ "ICE: cannot find variable " ++ name
+    Nothing -> throwError $ unplacedSemError $ "ICE: cannot find variable " ++ name
 
 -- | Returns callable llvm type
 getCallableLLVMType :: Callable -> Codegen LLVM.Type
@@ -79,7 +78,7 @@ toLLVMType JHandle = return i64
 toLLVMType JCode = return $ ptr codeTypeStruct
 toLLVMType (JArray et) = ArrayType arraySize <$> toLLVMType et
 toLLVMType t@(JUserDefined _) = toLLVMType =<< getRootType t 
-toLLVMType JNull = throwError $ strMsg "ICE: cannot generate code for special type JNull"
+toLLVMType JNull = throwError $ unplacedSemError "ICE: cannot generate code for special type JNull"
 
 sizeOfType :: JassType -> Codegen Int
 sizeOfType JInteger = return 4
@@ -90,7 +89,7 @@ sizeOfType JHandle = return 8
 sizeOfType JCode = return codeTypeSize
 sizeOfType (JArray et) = (arraySize *) <$> sizeOfType et
 sizeOfType t@(JUserDefined _) = sizeOfType =<< getRootType t 
-sizeOfType JNull = throwError $ strMsg "ICE: cannot generate code for special type JNull"
+sizeOfType JNull = throwError $ unplacedSemError "ICE: cannot generate code for special type JNull"
 
 -- | Internal representation of code value
 codeTypeStruct :: Type
@@ -123,10 +122,10 @@ defaultValue JReal = return $ Float (Single 0.0)
 defaultValue JBoolean = return $ Int 1 0
 defaultValue JString = return $ Null (ptr i8)
 defaultValue JHandle = return $ Int 64 0
-defaultValue JCode = throwError $ strMsg "ICE: no default value for code value"
+defaultValue JCode = throwError $ unplacedSemError "ICE: no default value for code value"
 defaultValue t@(JArray _) = Null <$> toLLVMType t
 defaultValue t@(JUserDefined _) = defaultValue =<< getRootType t
-defaultValue JNull = throwError $ strMsg "ICE: cannot generate code for special type JNull"
+defaultValue JNull = throwError $ unplacedSemError "ICE: cannot generate code for special type JNull"
 
 -- | Generates array type from element LLVM type
 jassArray :: Type -> Type
@@ -137,7 +136,7 @@ getFunctionType :: String -> Codegen LLVM.Type
 getFunctionType name = do
   callable <- getCallable name
   case callable of
-    Nothing -> throwError $ strMsg $ "ICE: cannot find function " ++ name
+    Nothing -> throwError $ unplacedSemError $ "ICE: cannot find function " ++ name
     Just fn -> do
       retType <- toLLVMType' $ getCallableReturnType fn
       pars <- mapM convertPars $ getCallableParameters fn
@@ -150,7 +149,7 @@ getFunctionArgumentsTypes :: String -> Codegen [LLVM.Type]
 getFunctionArgumentsTypes name = do
   callable <- getCallable name
   case callable of
-    Nothing -> throwError $ strMsg $ "ICE: cannot find function " ++ name
+    Nothing -> throwError $ unplacedSemError $ "ICE: cannot find function " ++ name
     Just fn -> mapM convertPars $ getCallableParameters fn
   where
   convertPars (AST.Parameter _ t _) = toLLVMType t
@@ -160,7 +159,7 @@ getFunctionReturnType :: String -> Codegen LLVM.Type
 getFunctionReturnType name = do
   callable <- getCallable name
   case callable of
-    Nothing -> throwError $ strMsg $ "ICE: cannot find function " ++ name
+    Nothing -> throwError $ unplacedSemError $ "ICE: cannot find function " ++ name
     Just fn -> maybe (return VoidType) toLLVMType $ getCallableReturnType fn
 
 -- | Returns true if type is some sort of integer
@@ -184,7 +183,7 @@ getTypeId (Just JHandle) = return 5
 getTypeId (Just JCode) = return 6
 getTypeId (Just (JArray et)) = (256 +) <$> getTypeId (Just et) 
 getTypeId (Just (JUserDefined n)) = (512 +) <$> getCustomTypeId n
-getTypeId (Just JNull) = throwError $ strMsg "ICE: cannot generate code for special type JNull"
+getTypeId (Just JNull) = throwError $ unplacedSemError "ICE: cannot generate code for special type JNull"
 
 -- | Returns jass type by runtime id, custom types should be registered before the function is called
 getTypeFromId :: Int -> Codegen (Maybe JassType)
@@ -198,7 +197,7 @@ getTypeFromId 6 = return $ Just JCode
 getTypeFromId n 
   | n > 512 = Just . JUserDefined <$> getCustomTypeFromId (n - 512)
   | n > 256 = fmap JArray <$> getTypeFromId (n - 256)
-  | otherwise = throwError $ strMsg $ "ICE: unknown id of type '" ++ show n ++ "'" 
+  | otherwise = throwError $ unplacedSemError $ "ICE: unknown id of type '" ++ show n ++ "'" 
   
 type TypesMap = (HM.HashMap Int JassType, HM.HashMap JassType Int) 
 

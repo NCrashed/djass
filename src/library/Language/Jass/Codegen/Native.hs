@@ -12,7 +12,6 @@ import LLVM.General.AST.Constant as Const
 import LLVM.General.AST.Linkage
 import LLVM.General.AST.Visibility
 import LLVM.General.AST.CallingConvention
-import Control.Applicative
 
 generateNativeSupport :: String -> [AST.Parameter] -> Maybe JassType -> Codegen ()
 generateNativeSupport funcName params retType = do

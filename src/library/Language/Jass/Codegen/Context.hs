@@ -57,13 +57,11 @@ import Language.Jass.Parser.AST.TypeDef
 import Language.Jass.Semantic.Callable
 import Language.Jass.Semantic.Variable
 import Language.Jass.Semantic.SemanticError as SemError
-import Control.Monad.Error
+import Control.Monad.Except
 import Control.Monad.State.Strict
 import qualified LLVM.General.AST as LLVM
 import qualified LLVM.General.AST.DataLayout as LLVM
 import qualified LLVM.General.AST.AddrSpace as LLVM
-import Control.Applicative
-import Data.Word
 import Safe (headMay)
 
 type Name = String
@@ -131,11 +129,11 @@ jassDataLayout = LLVM.defaultDataLayout {
   LLVM.pointerLayouts = ML.fromList [(LLVM.AddrSpace 0, (8, LLVM.AlignmentInfo 0 Nothing))]
 }
     
-newtype Codegen a = Codegen { runCodegen_ :: ErrorT SemanticError (State CodegenContext) a }
+newtype Codegen a = Codegen { runCodegen_ :: ExceptT SemanticError (State CodegenContext) a }
   deriving (Functor, Applicative, Monad, MonadState CodegenContext, MonadError SemanticError)
    
 runCodegen :: CodegenContext -> Codegen a -> Either SemanticError a 
-runCodegen context codegen = evalState (runErrorT $ runCodegen_ codegen) context
+runCodegen context codegen = evalState (runExceptT $ runCodegen_ codegen) context
 
 getType :: Name -> Codegen (Maybe TypeDef)
 getType = getFromContext contextTypes
@@ -176,7 +174,7 @@ addLocalVar var = do
   let varName = getVarName var
   mvar' <- getVariable varName
   case mvar' of
-    Just _ -> throwError $ strMsg $ "Cannot add new variable to context, already exists: " ++ varName
+    Just _ -> throwError $ unplacedSemError $ "Cannot add new variable to context, already exists: " ++ varName
     Nothing -> do
       context <- get
       put $ context { contextLocalVariables = HM.insert varName var (contextLocalVariables context)}
@@ -241,7 +239,7 @@ getCurrentBlock = do
   context <- get
   let block = headMay $ contextSavedBlocks context
   case block of
-    Nothing -> throwError $ strMsg "ICE: No current block"
+    Nothing -> throwError $ unplacedSemError "ICE: No current block"
     Just block' -> return block'
   
 appendCurrentBlock :: [LLVM.Named LLVM.Instruction] -> Codegen ()
@@ -280,7 +278,7 @@ getLoopReturn :: Codegen LLVM.Name
 getLoopReturn = do
   context <- get
   case contextLoopReturn context of
-    Nothing -> throwError $ strMsg "ICE: nude exitwhen is occured"
+    Nothing -> throwError $ unplacedSemError "ICE: nude exitwhen is occured"
     Just nm -> return nm   
 
 getLoopReturnMaybe :: Codegen (Maybe LLVM.Name)
@@ -301,7 +299,7 @@ addNativeMapping exportName setterName = do
   context <- get
   let mapping = nativesMapping context
   case exportName `HM.lookup` mapping of
-    Just _ -> throwError $ strMsg $ "ICE: tried to redefine native mapping " ++ exportName
+    Just _ -> throwError $ unplacedSemError $ "ICE: tried to redefine native mapping " ++ exportName
     Nothing -> put context { nativesMapping = HM.insert exportName setterName mapping }
 
 getNativesMapping :: Codegen NativesMapping
@@ -340,7 +338,7 @@ registerCustomType s = do
   context <- get
   let table = type2id context
   case HM.lookup s table of
-    Just _ -> throwError $ strMsg $ "ICE: Tried to register existing type: " ++ s
+    Just _ -> throwError $ unplacedSemError $ "ICE: Tried to register existing type: " ++ s
     Nothing -> do
       let i = typeIdCounter context
       let table' = id2type context
@@ -355,7 +353,7 @@ getCustomTypeId :: String -> Codegen Int
 getCustomTypeId n = do
   table <- type2id <$> get
   case HM.lookup n table of
-    Nothing -> throwError $ strMsg $ "ICE: Type " ++ n ++ " isn't registered!"
+    Nothing -> throwError $ unplacedSemError $ "ICE: Type " ++ n ++ " isn't registered!"
     Just i -> return i
 
 -- | Tries to find custom type by id
@@ -363,7 +361,7 @@ getCustomTypeFromId :: Int -> Codegen String
 getCustomTypeFromId i = do
   table <- id2type <$> get
   case HM.lookup i table of
-    Nothing -> throwError $ strMsg $ "ICE: Cannot find type by id: " ++ show i
+    Nothing -> throwError $ unplacedSemError $ "ICE: Cannot find type by id: " ++ show i
     Just n -> return n
     
 -- | Returns accumulated mapping from ids to custom types names

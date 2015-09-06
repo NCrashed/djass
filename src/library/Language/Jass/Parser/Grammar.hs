@@ -17,7 +17,6 @@ import Language.Jass.Parser.AST as AST
 import Language.Jass.Parser.Lexer
 import Text.Parsec
 import Text.ParserCombinators.Parsec.Prim (parseFromFile)
-import Control.Applicative ((<$>), (<*>), pure)
 
 data Trio a b c = TrioFirst a | TrioSecond b | TrioThird c
 

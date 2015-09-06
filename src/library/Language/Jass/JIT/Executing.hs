@@ -22,7 +22,6 @@ import LLVM.General.PassManager
 import LLVM.General.Context
 import Control.Monad
 import Control.Monad.Trans.Except
-import Control.Applicative
 import Foreign.Ptr
 import Control.Monad.IO.Class (liftIO)
 

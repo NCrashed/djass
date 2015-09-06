@@ -14,7 +14,6 @@ import Test.Tasty.HUnit
 import Control.Monad
 import Control.Monad.Trans.Except
 import Control.Monad.IO.Class
-import Control.Applicative
 
 import Foreign.C.String
 import Foreign.C.Types

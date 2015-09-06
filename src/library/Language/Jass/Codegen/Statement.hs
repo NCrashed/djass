@@ -11,8 +11,7 @@ import LLVM.General.AST.CallingConvention as LLVM
 import LLVM.General.AST.Type as LLVM
 import LLVM.General.AST.Constant as Const
 import LLVM.General.AST.Instruction as Instr
-import Control.Monad.Error
-import Control.Applicative
+import Control.Monad.Except
 import Control.Arrow
 import Data.Maybe
 

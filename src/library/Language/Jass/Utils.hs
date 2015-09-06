@@ -6,7 +6,6 @@ module Language.Jass.Utils(
   ) where
 
 import Control.Monad.Trans.Except
-import Control.Applicative
 
 -- | Converts left constructor of either with function
 mapLeft ::  (e -> e') -> Either e a -> Either e' a

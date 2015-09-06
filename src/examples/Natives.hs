@@ -5,9 +5,7 @@ import Language.Jass.Program
 import Foreign.C.Types
 import Foreign.C.String
 import Foreign.Ptr
-import Control.Applicative
-import Control.Monad.Trans.Except
-import Control.Monad.IO.Class
+import Control.Monad.Except
 import System.Random  
 import Data.Char
 
