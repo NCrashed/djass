@@ -6,6 +6,7 @@ before_install:
  - sudo apt-get update && sudo apt-get install stack -y
 
 install:
+ - stack setup
  - stack install --only-snapshot
 
 script:
